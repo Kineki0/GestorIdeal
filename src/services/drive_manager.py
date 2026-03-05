@@ -49,7 +49,7 @@ def _get_drive_service(force_new_auth=False):
     if creds:
         return build('drive', 'v3', credentials=creds)
 
-    # --- FLUXO DE AUTORIZAÇÃO VIA COOKIES (Super Seguro para Nuvem) ---
+    # --- FLUXO DE AUTORIZAÇÃO ---
     client_config = None
     if "GCP_CLIENT_SECRETS" in st.secrets:
         client_config = json.loads(st.secrets["GCP_CLIENT_SECRETS"])
@@ -63,46 +63,47 @@ def _get_drive_service(force_new_auth=False):
 
     flow = Flow.from_client_config(client_config, scopes=SCOPES, redirect_uri=get_current_url())
     
-    cookie_manager = _get_cookie_manager()
     auth_code = st.query_params.get("code")
     
     if auth_code:
         try:
-            # Recupera o verificador do COOKIE (mais estável que session_state)
-            code_verifier = cookie_manager.get('oauth_verifier')
+            # Tenta recuperar o verificador do COOKIE ou da SESSÃO (Dupla Camada)
+            cookie_manager = _get_cookie_manager()
+            code_verifier = cookie_manager.get('oauth_verifier') or st.session_state.get('oauth_code_verifier')
             
+            # Se ainda não temos o verificado, tentamos forçar uma carga do cookie
             if not code_verifier:
-                # Se o cookie ainda não carregou, espera um pouco (Streamlit async)
-                st.warning("🔄 Finalizando conexão... aguarde um instante.")
-                st.stop()
+                # Se o código existe mas o verificador não, o Streamlit pode estar em delay.
+                # Tentamos um pequeno truque de espera visual ou rerun.
+                st.info("🔄 Autenticando... Por favor, aguarde 2 segundos.")
+                import time
+                time.sleep(1)
+                st.rerun()
 
             flow.fetch_token(code=auth_code, code_verifier=code_verifier)
-            
             with open('token.json', 'w') as token:
                 token.write(flow.credentials.to_json())
             
-            # Limpa tudo
             st.query_params.clear()
             cookie_manager.delete('oauth_verifier')
             st.success("✅ Conectado com sucesso!")
             st.rerun()
         except Exception as e:
-            if "code verifier" in str(e).lower():
-                st.error("❌ Falha na chave de segurança. Por favor, tente clicar no botão de conectar novamente.")
-            else:
-                st.error(f"Erro na autorização: {e}")
+            st.error(f"Erro na autorização: {e}")
+            st.info("Dica: Se o erro persistir, clique novamente no botão de conectar.")
             st.query_params.clear()
             return None
     else:
-        # Gera URL e salva o verificador no COOKIE
+        # Mostra o convite para conectar
         auth_url, _ = flow.authorization_url(prompt='consent', access_type='offline')
         
-        # Salva a chave no navegador do usuário
-        cookie_manager.set('oauth_verifier', flow.code_verifier, key="set_verifier")
+        # Salva em dois lugares por segurança (Cookie + Sessão)
+        cookie_manager = _get_cookie_manager()
+        cookie_manager.set('oauth_verifier', flow.code_verifier, key="set_v_cookie")
+        st.session_state['oauth_code_verifier'] = flow.code_verifier
         
-        st.info("🔒 É necessário conectar sua conta Google.")
+        st.info("🔒 É necessário conectar sua conta Google para salvar os dados.")
         st.link_button("🔗 CLIQUE AQUI PARA CONECTAR AO GOOGLE", auth_url, use_container_width=True)
-        st.warning("⚠️ Uma nova aba será aberta. Após autorizar, o sistema carregará nela.")
         st.stop()
     
     return None
