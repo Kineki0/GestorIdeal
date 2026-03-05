@@ -78,11 +78,9 @@ def _sync_to_drive():
     except Exception: pass
 
 def _load_database_from_file():
-    """Tenta ler do Drive, senão carrega local ou cria novo. (SEM CACHE para evitar conflitos)"""
-    # 1. Tenta baixar a versão mais recente do Drive
+    """Carrega o Excel, tentando sincronizar com o Drive primeiro."""
     _sync_from_drive()
 
-    # 2. Se o arquivo ainda não existe (nem local nem baixado), cria estrutura inicial
     if not os.path.exists(config.DATABASE_PATH):
         dfs = {
             'Clientes': pd.DataFrame({'ID_Cliente': [], 'Nome_Cliente': [], 'Ativo': []}),
@@ -100,26 +98,18 @@ def _load_database_from_file():
             'Anexos': pd.DataFrame({'ID_Anexo': [], 'Tipo_Referencia': [], 'ID_Referencia': [], 'Nome_Arquivo': [], 'Tipo_Arquivo': [], 'Link_Drive': [], 'Usuario_Envio': [], 'Data_Envio': [], 'Observacao': []}),
             'KanbanConfig': pd.DataFrame({'ID_Etapa': [], 'Nome_Etapa': [], 'Ordem': []})
         }
-        # Salva o arquivo inicial
         os.makedirs(os.path.dirname(config.DATABASE_PATH), exist_ok=True)
         with pd.ExcelWriter(config.DATABASE_PATH, engine='openpyxl') as writer:
-            for name, df in dfs.items():
-                df.to_excel(writer, sheet_name=name, index=False)
-        
-        # Sobe para o Drive se possível
+            for name, df in dfs.items(): df.to_excel(writer, sheet_name=name, index=False)
         _sync_to_drive()
         return dfs
 
-    # 3. Lê o arquivo Excel existente
     try:
         with excel_lock:
             return pd.read_excel(config.DATABASE_PATH, sheet_name=None)
-    except Exception as e:
-        st.error(f"Erro ao carregar banco de dados: {e}")
-        return None
+    except Exception: return None
 
 def init_session_state():
-    """Inicializa o banco de dados no session_state."""
     if 'db_dfs' not in st.session_state:
         st.session_state.db_dfs = _load_database_from_file()
 
@@ -128,88 +118,147 @@ def get_session_dfs():
     return st.session_state.db_dfs
 
 def commit_to_file():
-    """Salva localmente e sincroniza com o Google Drive."""
     dfs = get_session_dfs()
     try:
         os.makedirs(os.path.dirname(config.DATABASE_PATH), exist_ok=True)
         with excel_lock:
             with pd.ExcelWriter(config.DATABASE_PATH, engine='openpyxl') as writer:
-                for name, df in dfs.items():
-                    df.to_excel(writer, sheet_name=name, index=False)
-        
+                for name, df in dfs.items(): df.to_excel(writer, sheet_name=name, index=False)
         _sync_to_drive()
-        st.toast("💾 Banco de dados sincronizado com o Drive!", icon="✅")
-    except Exception as e:
-        st.error(f"Erro ao salvar: {e}")
+        st.toast("💾 Sincronizado com o Drive!", icon="✅")
+    except Exception as e: st.error(f"Erro ao salvar: {e}")
+
+# --- Funções de Histórico ---
+
+def _add_history(dfs, lead_id, field, old_val, new_val, user_name, comment=""):
+    hist_df = dfs['Historico']
+    new_id = (hist_df['ID_Historico'].max() + 1) if not hist_df.empty else 1
+    new_entry = pd.DataFrame([{
+        'ID_Historico': new_id, 'ID_Lead': lead_id, 'Timestamp': datetime.now(), 
+        'Usuario': user_name, 'Campo_Alterado': field, 'Valor_Antigo': str(old_val), 
+        'Valor_Novo': str(new_val), 'Comentario': comment
+    }])
+    dfs['Historico'] = pd.concat([hist_df, new_entry], ignore_index=True)
+
+# --- Funções de Leads ---
 
 def get_detailed_leads():
     leads = get_all('Leads')
-    valid_stages = get_kanban_stages()
+    stages = get_kanban_stages()
     if not leads.empty and 'Etapa_Atual' in leads.columns:
-        leads = leads[leads['Etapa_Atual'].isin(valid_stages)]
+        leads = leads[leads['Etapa_Atual'].isin(stages)]
+    
+    # Adiciona o último comentário
+    hist = get_all('Historico')
+    if not hist.empty:
+        comms = hist[hist['Campo_Alterado'] == 'Comentário'].sort_values('Timestamp', ascending=False)
+        last_comm = comms.drop_duplicates('ID_Lead').set_index('ID_Lead')['Comentario']
+        leads['Ultimo_Comentario'] = leads['ID_Lead'].map(last_comm).fillna("Sem notas")
+    else:
+        leads['Ultimo_Comentario'] = "Sem notas"
     return leads
 
-def get_all(sheet_name):
+def create_lead(data, user):
     dfs = get_session_dfs()
-    return dfs.get(sheet_name, pd.DataFrame()).copy()
+    df = dfs['Leads']
+    new_id = (df['ID_Lead'].max() + 1) if not df.empty else 1
+    now = datetime.now()
+    etapa = data.get('etapa_inicial', get_kanban_stages()[0])
+    
+    new_row = {
+        'ID_Lead': new_id, 'Descricao': data.get('Descricao'), 'Nome_Contato': data.get('Nome_Contato'),
+        'CNPJ': data.get('CNPJ'), 'Email': data.get('Email'), 'Razao_Social': data.get('Razao_Social'),
+        'Nome_Fantasia': data.get('Nome_Fantasia'), 'Industria': data.get('Industria', ''),
+        'Etapa_Atual': etapa, 'Status': "Em dia", 'Tags': data.get('Tags', ''),
+        'Prioridade': data.get('Prioridade', 'Média'), 'Ultima_Atualizacao': now,
+        'Data_Criacao': now, 'Prazo': data.get('Prazo'), 'Data_Entrada_Etapa': now
+    }
+    dfs['Leads'] = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
+    _add_history(dfs, new_id, "Lead", "N/A", "Criado", user['Nome'], "Lead inicializado")
+    commit_to_file()
+    return new_id
+
+def update_lead(lead_id, updates, user, comment=""):
+    dfs = get_session_dfs()
+    df = dfs['Leads']
+    idx = df.index[df['ID_Lead'] == lead_id].tolist()
+    if not idx: return False
+    i = idx[0]
+    
+    if 'Etapa_Atual' in updates and updates['Etapa_Atual'] != df.at[i, 'Etapa_Atual']:
+        updates['Data_Entrada_Etapa'] = datetime.now()
+
+    for field, val in updates.items():
+        _add_history(dfs, lead_id, field, df.at[i, field], val, user['Nome'], comment)
+        df.at[i, field] = val
+    df.at[i, 'Ultima_Atualizacao'] = datetime.now()
+    commit_to_file()
+    return True
+
+def add_comment_to_lead_history(lead_id, user, comment):
+    dfs = get_session_dfs()
+    _add_history(dfs, lead_id, "Comentário", "N/A", comment, user['Nome'], comment)
+    commit_to_file()
+    return True
+
+# --- Funções de Anexos ---
+
+def create_anexo_record(tipo_referencia, id_referencia, nome_arquivo, tipo_arquivo, link_drive, usuario_envio, observacao):
+    dfs = get_session_dfs()
+    df = dfs['Anexos']
+    new_id = (df['ID_Anexo'].max() + 1) if not df.empty else 1
+    new_row = {
+        'ID_Anexo': new_id, 'Tipo_Referencia': tipo_referencia, 'ID_Referencia': id_referencia,
+        'Nome_Arquivo': nome_arquivo, 'Tipo_Arquivo': tipo_arquivo, 'Link_Drive': link_drive,
+        'Usuario_Envio': usuario_envio, 'Data_Envio': datetime.now(), 'Observacao': observacao
+    }
+    dfs['Anexos'] = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
+    if tipo_referencia == "Lead":
+        _add_history(dfs, id_referencia, "Anexo", "N/A", nome_arquivo, usuario_envio, f"Arquivo '{nome_arquivo}' anexado.")
+    commit_to_file()
+    return new_id
+
+def get_anexos_by_referencia(tipo, rid):
+    df = get_all('Anexos')
+    if df.empty: return pd.DataFrame()
+    return df[(df['Tipo_Referencia'] == tipo) & (df['ID_Referencia'] == rid)]
+
+# --- Outras Funções ---
+
+def get_all(name):
+    dfs = get_session_dfs()
+    return dfs.get(name, pd.DataFrame()).copy()
 
 def get_kanban_stages():
     dfs = get_session_dfs()
-    kanban_config = dfs.get('KanbanConfig', pd.DataFrame())
-    if kanban_config.empty:
-        default_stages = [{'ID_Etapa': i + 1, 'Nome_Etapa': etapa, 'Ordem': i} for i, etapa in enumerate(DEFAULT_ETAPAS)]
-        kanban_config = pd.DataFrame(default_stages)
-        dfs['KanbanConfig'] = kanban_config
-    return kanban_config.sort_values(by='Ordem')['Nome_Etapa'].tolist()
-
-def create_lead(lead_data, user, comentario="Lead Criado"):
-    dfs = get_session_dfs()
-    leads_df = dfs['Leads']
-    etapas = get_kanban_stages()
-    etapa = lead_data.get('etapa_inicial', etapas[0] if etapas else "")
-    new_id = (leads_df['ID_Lead'].max() + 1) if not leads_df.empty else 1
-    
-    now = datetime.now()
-    new_lead_data = {
-        'ID_Lead': new_id, 'Descricao': lead_data.get('Descricao'), 'Nome_Contato': lead_data.get('Nome_Contato'),
-        'CNPJ': lead_data.get('CNPJ'), 'Email': lead_data.get('Email'), 'Razao_Social': lead_data.get('Razao_Social'),
-        'Nome_Fantasia': lead_data.get('Nome_Fantasia'), 'Industria': lead_data.get('Industria', ''),
-        'Etapa_Atual': etapa, 'Status': "Em dia", 'Tags': lead_data.get('Tags', ''),
-        'Prioridade': lead_data.get('Prioridade', 'Média'), 'Ultima_Atualizacao': now,
-        'Data_Criacao': now, 'Prazo': lead_data.get('Prazo'), 'Data_Entrada_Etapa': now
-    }
-    
-    new_lead = pd.DataFrame([new_lead_data])
-    dfs['Leads'] = pd.concat([leads_df, new_lead], ignore_index=True)
-    commit_to_file()
-    return new_id
+    kc = dfs.get('KanbanConfig', pd.DataFrame())
+    if kc.empty:
+        kc = pd.DataFrame([{'ID_Etapa': i+1, 'Nome_Etapa': e, 'Ordem': i} for i, e in enumerate(DEFAULT_ETAPAS)])
+        dfs['KanbanConfig'] = kc
+    return kc.sort_values('Ordem')['Nome_Etapa'].tolist()
 
 def get_user_by_email(email):
-    users_df = get_all('Usuarios')
-    if users_df.empty: return None
-    user = users_df[users_df['Email'].str.lower() == email.lower()]
+    df = get_all('Usuarios')
+    if df.empty: return None
+    user = df[df['Email'].str.lower() == email.lower()]
     return user.to_dict('records')[0] if not user.empty else None
 
 def user_exists(email):
-    users_df = get_all('Usuarios')
-    return not users_df.empty and not users_df[users_df['Email'].str.lower() == email.lower()].empty
+    df = get_all('Usuarios')
+    return not df.empty and not df[df['Email'].str.lower() == email.lower()].empty
 
-def register_user(name, email, hashed_password, profile):
+def register_user(name, email, pwd, profile):
     dfs = get_session_dfs()
-    users_df = dfs.get('Usuarios', pd.DataFrame())
-    new_id = (users_df['ID_Usuario'].max() + 1) if not users_df.empty else 1
-    new_user = pd.DataFrame([{'ID_Usuario': new_id, 'Nome': name, 'Email': email, 'Senha': hashed_password, 'Perfil': profile, 'Ativo': True}])
-    dfs['Usuarios'] = pd.concat([users_df, new_user], ignore_index=True)
+    df = dfs['Usuarios']
+    new_id = (df['ID_Usuario'].max() + 1) if not df.empty else 1
+    new_row = {'ID_Usuario': new_id, 'Nome': name, 'Email': email, 'Senha': pwd, 'Perfil': profile, 'Ativo': True}
+    dfs['Usuarios'] = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
     commit_to_file()
     return new_id
 
-def log_system_event(msg, level="INFO"):
-    pass
-
 def rename_kanban_stage(old, new):
     dfs = get_session_dfs()
-    kc = dfs['KanbanConfig']
-    kc.loc[kc['Nome_Etapa'] == old, 'Nome_Etapa'] = new
+    dfs['KanbanConfig'].loc[dfs['KanbanConfig']['Nome_Etapa'] == old, 'Nome_Etapa'] = new
     dfs['Leads'].loc[dfs['Leads']['Etapa_Atual'] == old, 'Etapa_Atual'] = new
     commit_to_file()
     return True
@@ -220,28 +269,20 @@ def remove_kanban_stage(name):
     commit_to_file()
     return True
 
-def add_kanban_stage(name, insert_at_order=0):
+def add_kanban_stage(name, order=0):
     dfs = get_session_dfs()
     kc = dfs['KanbanConfig']
     new_id = (kc['ID_Etapa'].max() + 1) if not kc.empty else 1
-    new_s = pd.DataFrame([{'ID_Etapa': new_id, 'Nome_Etapa': name, 'Ordem': insert_at_order}])
-    dfs['KanbanConfig'] = pd.concat([kc, new_s], ignore_index=True).sort_values('Ordem')
+    new_row = {'ID_Etapa': new_id, 'Nome_Etapa': name, 'Ordem': order}
+    dfs['KanbanConfig'] = pd.concat([kc, pd.DataFrame([new_row])], ignore_index=True).sort_values('Ordem')
     commit_to_file()
     return True
 
 def delete_leads(ids, user):
     dfs = get_session_dfs()
     dfs['Leads'] = dfs['Leads'][~dfs['Leads']['ID_Lead'].isin(ids)]
+    if 'Historico' in dfs: dfs['Historico'] = dfs['Historico'][~dfs['Historico']['ID_Lead'].isin(ids)]
     commit_to_file()
     return True
 
-def add_comment_to_lead_history(lid, user, msg):
-    commit_to_file()
-    return True
-
-def create_anexo_record(t, rid, name, typ, link, user, obs):
-    commit_to_file()
-    return True
-
-def get_anexos_by_referencia(t, rid):
-    return pd.DataFrame()
+def log_system_event(msg, level="INFO"): pass
