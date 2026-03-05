@@ -138,7 +138,26 @@ def _display_lead_details_modal(lead_id):
 def display():
     st.markdown("""
         <style>
-            /* ESTILO CARD-BOTÃO COM QUEBRA DE LINHA */
+            /* ESTILO PARA PERMITIR ROLAGEM HORIZONTAL E COLUNAS MAIORES */
+            [data-testid="stHorizontalBlock"] {
+                flex-wrap: nowrap !important;
+                overflow-x: auto !important;
+                gap: 1rem !important;
+                padding-bottom: 20px !important;
+            }
+            
+            [data-testid="column"] {
+                min-width: 450px !important; /* Colunas maiores conforme pedido */
+                border-right: 2px solid #004a99 !important; /* Divisórias visíveis */
+                padding: 15px 20px !important;
+                background-color: rgba(0, 74, 153, 0.03) !important;
+            }
+            
+            [data-testid="column"]:last-child {
+                border-right: none !important;
+            }
+
+            /* ESTILO CARD-BOTÃO */
             .stButton > button[key^="card_btn_"] {
                 height: auto !important;
                 padding: 15px !important;
@@ -150,22 +169,19 @@ def display():
                 transition: 0.3s !important;
                 line-height: 1.5 !important;
             }
+            
             .stButton > button[key^="card_btn_"] div p {
-                white-space: pre-wrap !important; /* FORÇA A QUEBRA DE LINHA */
+                white-space: pre-wrap !important;
                 word-wrap: break-word !important;
             }
+            
             .stButton > button[key^="card_btn_"]:hover {
                 border-color: #004a99 !important;
                 box-shadow: 0 4px 12px rgba(0,74,153,0.1) !important;
                 transform: translateY(-2px) !important;
             }
             
-            [data-testid="column"] {
-                border-right: 1px solid rgba(0,74,153,0.1) !important;
-                padding: 10px 15px !important;
-                min-width: 380px !important;
-            }
-            
+            .sla-tag { font-size: 0.7rem; background: #004a99; color: white; padding: 2px 6px; border-radius: 5px; float: right; }
             h3 { color: #004a99 !important; border-bottom: 2px solid #004a99; padding-bottom: 5px; margin-bottom: 20px !important; }
         </style>
     """, unsafe_allow_html=True)
@@ -194,24 +210,20 @@ def display():
                 criado = pd.to_datetime(p['Data_Criacao']).strftime('%d/%m/%y') if pd.notna(p['Data_Criacao']) else "N/A"
                 retorno = pd.to_datetime(p['Prazo']).strftime('%d/%m/%y') if pd.notna(p['Prazo']) else "Sem data"
                 
-                # Texto formatado com quebras de linha reais (\n)
                 label_text = (
-                    f"🏢 {p['Razao_Social']}\n"
-                    f"👤 {p['Nome_Contato']} ({dias}d na fase)\n"
-                    f"📅 Criado: {criado} | ⏳ Retorno: {retorno}\n"
-                    f"────────────────────\n"
+                    f"🏢 {p['Razao_Social']}\n\n"
+                    f"👤 {p['Nome_Contato']} ({dias}d na fase)\n\n"
+                    f"📅 Criado: {criado} | ⏳ Retorno: {retorno}\n\n"
+                    f"────────────────────\n\n"
                     f"💬 {p.get('Ultimo_Comentario', 'Sem notas')}"
                 )
                 
-                # Container para o Card e o Botão de Nota Rápida
                 with st.container():
-                    # Card principal (Botão)
                     if st.button(label_text, key=f"card_btn_{p['ID_Lead']}", use_container_width=True):
                         st.session_state['selected_lead_id'] = p['ID_Lead']
                         st.session_state['show_fullscreen_details'] = True
                         st.rerun()
                     
-                    # Botão de Nota Rápida (Abaixo do card)
                     with st.popover("💬 Nota Rápida", use_container_width=True):
                         quick_note = st.text_area("Escreva sua nota...", key=f"quick_note_area_{p['ID_Lead']}")
                         if st.button("Salvar Nota", key=f"btn_save_quick_{p['ID_Lead']}", type="primary"):
