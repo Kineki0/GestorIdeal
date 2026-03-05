@@ -101,12 +101,19 @@ def _load_database_from_file():
     try:
         with excel_lock:
             dfs = pd.read_excel(config.DATABASE_PATH, sheet_name=None)
-            # Garantir colunas novas
+            
+            # 1. Garantir colunas esperadas nos Leads
             if 'Leads' in dfs:
                 for col in expected_lead_columns:
                     if col not in dfs['Leads'].columns: dfs['Leads'][col] = ""
             
-            # Garantir existência de todas as abas
+            # 2. Garantir colunas esperadas no Histórico (Evita KeyError: 'Tipo')
+            expected_hist_columns = ['ID_Historico', 'ID_Lead', 'Timestamp', 'Usuario', 'Tipo', 'Campo', 'Antigo', 'Novo', 'Mensagem']
+            if 'Historico' in dfs:
+                for col in expected_hist_columns:
+                    if col not in dfs['Historico'].columns: dfs['Historico'][col] = ""
+            
+            # 3. Garantir existência de todas as abas
             required_sheets = ['Usuarios', 'Leads', 'Historico', 'Anexos', 'Logs', 'PasswordResetTokens', 'KanbanConfig']
             for sheet in required_sheets:
                 if sheet not in dfs:
@@ -153,7 +160,7 @@ def get_detailed_leads(sort_order="Mais Recentes"):
         
     # Último comentário
     hist = get_all('Historico')
-    if not hist.empty:
+    if not hist.empty and 'Tipo' in hist.columns:
         comms = hist[hist['Tipo'] == 'Comentário'].sort_values('Timestamp', ascending=False)
         last_comm = comms.drop_duplicates('ID_Lead').set_index('ID_Lead')['Mensagem']
         leads['Ultimo_Comentario'] = leads['ID_Lead'].map(last_comm).fillna("Sem notas")
