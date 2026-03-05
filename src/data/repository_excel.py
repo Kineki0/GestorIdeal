@@ -6,6 +6,7 @@ import streamlit as st
 import openpyxl
 import config
 import threading
+from threading import Lock
 from datetime import datetime, timedelta
 from config import ETAPAS_KANBAN as DEFAULT_ETAPAS
 import utils
