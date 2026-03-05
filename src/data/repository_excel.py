@@ -5,49 +5,22 @@ import io
 import streamlit as st
 import openpyxl
 import config
+import threading
 from datetime import datetime, timedelta
 from config import ETAPAS_KANBAN as DEFAULT_ETAPAS
 import utils
 import secrets
 from googleapiclient.http import MediaIoBaseDownload
 
-# Lock to prevent race conditions
-from threading import Lock
+# Lock para evitar que dois processos mexam no arquivo ao mesmo tempo
 excel_lock = Lock()
 
-# --- Funções de Sincronização Google Drive ---
+# --- Sistema de Sincronização em Segundo Plano (Background Sync) ---
 
-def _sync_from_drive():
-    """Baixa o database.xlsx do Google Drive."""
-    from services import drive_manager
+def _sync_worker():
+    """Tarefa que roda em segundo plano para subir o arquivo para o Drive sem travar o app."""
     try:
-        root_id = st.secrets["DRIVE_ROOT_FOLDER_ID"]
-        service = drive_manager._get_drive_service()
-        if not service: return False
-        
-        query = f"name='database.xlsx' and '{root_id}' in parents and trashed=false"
-        results = service.files().list(q=query, fields="files(id)").execute()
-        files = results.get('files', [])
-        
-        if files:
-            file_id = files[0]['id']
-            request = service.files().get_media(fileId=file_id)
-            fh = io.BytesIO()
-            downloader = MediaIoBaseDownload(fh, request)
-            done = False
-            while done is False:
-                status, done = downloader.next_chunk()
-            
-            with open(config.DATABASE_PATH, 'wb') as f:
-                f.write(fh.getvalue())
-            return True
-    except Exception: pass
-    return False
-
-def _sync_to_drive():
-    """Envia o database.xlsx local para o Google Drive."""
-    from services import drive_manager
-    try:
+        from services import drive_manager
         root_id = st.secrets["DRIVE_ROOT_FOLDER_ID"]
         service = drive_manager._get_drive_service()
         if not service: return
@@ -66,8 +39,6 @@ def _sync_to_drive():
             def getvalue(self): return self.c
             @property
             def type(self): return "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-            @property
-            def name(self): return "database.xlsx"
         
         mock = MockFile(content)
         
@@ -77,14 +48,50 @@ def _sync_to_drive():
             drive_manager.upload_file(mock, "database.xlsx", root_id)
     except Exception: pass
 
+def _sync_to_drive_async():
+    """Dispara a sincronização para o Drive em uma thread separada (Não bloqueia o app)."""
+    thread = threading.Thread(target=_sync_worker)
+    thread.start()
+
+def _sync_from_drive():
+    """Baixa o database.xlsx (Bloqueante, usado apenas no início para garantir dados frescos)."""
+    from services import drive_manager
+    try:
+        root_id = st.secrets["DRIVE_ROOT_FOLDER_ID"]
+        service = drive_manager._get_drive_service()
+        if not service: return False
+        
+        query = f"name='database.xlsx' and '{root_id}' in parents and trashed=false"
+        results = service.files().list(q=query, fields="files(id)").execute()
+        files = results.get('files', [])
+        
+        if files:
+            file_id = files[0]['id']
+            request = service.files().get_media(fileId=file_id)
+            fh = io.BytesIO()
+            downloader = MediaIoBaseDownload(fh, request)
+            done = False
+            while done is False:
+                _, done = downloader.next_chunk()
+            
+            os.makedirs(os.path.dirname(config.DATABASE_PATH), exist_ok=True)
+            with open(config.DATABASE_PATH, 'wb') as f:
+                f.write(fh.getvalue())
+            return True
+    except Exception: pass
+    return False
+
+# --- Funções de Carga e Salvamento Otimizadas ---
+
 def _load_database_from_file():
-    """Carrega o Excel, tentando sincronizar com o Drive primeiro."""
-    _sync_from_drive()
+    """Carrega o banco de dados. Tenta o Drive apenas se a sessão estiver vazia."""
+    # Se já temos o arquivo local recente, evitamos o download pesado
+    if not os.path.exists(config.DATABASE_PATH):
+        _sync_from_drive()
 
     if not os.path.exists(config.DATABASE_PATH):
+        # Estrutura inicial (se for a primeira vez absoluta)
         dfs = {
-            'Clientes': pd.DataFrame({'ID_Cliente': [], 'Nome_Cliente': [], 'Ativo': []}),
-            'Servicos': pd.DataFrame({'ID_Servico': [], 'Nome_Servico': [], 'Ativo': []}),
             'Usuarios': pd.DataFrame({'ID_Usuario': [], 'Nome': [], 'Email': [], 'Senha': [], 'Perfil': [], 'Ativo': []}),
             'Leads': pd.DataFrame({
                 'ID_Lead': [], 'Descricao': [], 'Nome_Contato': [], 'CNPJ': [], 'Email': [], 
@@ -93,15 +100,13 @@ def _load_database_from_file():
                 'Data_Criacao': [], 'Prazo': [], 'Data_Entrada_Etapa': []
             }),
             'Historico': pd.DataFrame({'ID_Historico': [], 'ID_Lead': [], 'Timestamp': [], 'Usuario': [], 'Campo_Alterado': [], 'Valor_Antigo': [], 'Valor_Novo': [], 'Comentario': []}),
-            'Logs': pd.DataFrame({'Timestamp': [], 'Nivel': [], 'Mensagem': []}),
-            'PasswordResetTokens': pd.DataFrame({'Token': [], 'Email': [], 'ExpiresAt': [], 'Used': []}),
-            'Anexos': pd.DataFrame({'ID_Anexo': [], 'Tipo_Referencia': [], 'ID_Referencia': [], 'Nome_Arquivo': [], 'Tipo_Arquivo': [], 'Link_Drive': [], 'Usuario_Envio': [], 'Data_Envio': [], 'Observacao': []}),
+            'Anexos': pd.DataFrame({'ID_Anexo': [], 'Tipo_Referencia': [], 'ID_Referencia': [], 'Nome_Arquivo': [], 'Link_Drive': [], 'Usuario_Envio': [], 'Data_Envio': []}),
             'KanbanConfig': pd.DataFrame({'ID_Etapa': [], 'Nome_Etapa': [], 'Ordem': []})
         }
         os.makedirs(os.path.dirname(config.DATABASE_PATH), exist_ok=True)
         with pd.ExcelWriter(config.DATABASE_PATH, engine='openpyxl') as writer:
             for name, df in dfs.items(): df.to_excel(writer, sheet_name=name, index=False)
-        _sync_to_drive()
+        _sync_to_drive_async()
         return dfs
 
     try:
@@ -118,29 +123,21 @@ def get_session_dfs():
     return st.session_state.db_dfs
 
 def commit_to_file():
+    """Salva no disco local (Rápido) e sobe para o Drive em segundo plano (Assíncrono)."""
     dfs = get_session_dfs()
     try:
-        os.makedirs(os.path.dirname(config.DATABASE_PATH), exist_ok=True)
         with excel_lock:
             with pd.ExcelWriter(config.DATABASE_PATH, engine='openpyxl') as writer:
-                for name, df in dfs.items(): df.to_excel(writer, sheet_name=name, index=False)
-        _sync_to_drive()
-        st.toast("💾 Sincronizado com o Drive!", icon="✅")
-    except Exception as e: st.error(f"Erro ao salvar: {e}")
+                for name, df in dfs.items():
+                    df.to_excel(writer, sheet_name=name, index=False)
+        
+        # Sobe para o Drive sem travar a tela do usuário
+        _sync_to_drive_async()
+        st.toast("💾 Alterações persistidas!", icon="🚀")
+    except Exception as e:
+        st.error(f"Erro ao salvar localmente: {e}")
 
-# --- Funções de Histórico ---
-
-def _add_history(dfs, lead_id, field, old_val, new_val, user_name, comment=""):
-    hist_df = dfs['Historico']
-    new_id = (hist_df['ID_Historico'].max() + 1) if not hist_df.empty else 1
-    new_entry = pd.DataFrame([{
-        'ID_Historico': new_id, 'ID_Lead': lead_id, 'Timestamp': datetime.now(), 
-        'Usuario': user_name, 'Campo_Alterado': field, 'Valor_Antigo': str(old_val), 
-        'Valor_Novo': str(new_val), 'Comentario': comment
-    }])
-    dfs['Historico'] = pd.concat([hist_df, new_entry], ignore_index=True)
-
-# --- Funções de Leads ---
+# --- Funções de Negócio ---
 
 def get_detailed_leads():
     leads = get_all('Leads')
@@ -148,7 +145,7 @@ def get_detailed_leads():
     if not leads.empty and 'Etapa_Atual' in leads.columns:
         leads = leads[leads['Etapa_Atual'].isin(stages)]
     
-    # Adiciona o último comentário
+    # Adiciona o último comentário de forma ultra-rápida
     hist = get_all('Historico')
     if not hist.empty:
         comms = hist[hist['Campo_Alterado'] == 'Comentário'].sort_values('Timestamp', ascending=False)
@@ -157,6 +154,18 @@ def get_detailed_leads():
     else:
         leads['Ultimo_Comentario'] = "Sem notas"
     return leads
+
+def get_all(name):
+    dfs = get_session_dfs()
+    return dfs.get(name, pd.DataFrame()).copy()
+
+def get_kanban_stages():
+    dfs = get_session_dfs()
+    kc = dfs.get('KanbanConfig', pd.DataFrame())
+    if kc.empty:
+        kc = pd.DataFrame([{'ID_Etapa': i+1, 'Nome_Etapa': e, 'Ordem': i} for i, e in enumerate(DEFAULT_ETAPAS)])
+        dfs['KanbanConfig'] = kc
+    return kc.sort_values('Ordem')['Nome_Etapa'].tolist()
 
 def create_lead(data, user):
     dfs = get_session_dfs()
@@ -201,7 +210,15 @@ def add_comment_to_lead_history(lead_id, user, comment):
     commit_to_file()
     return True
 
-# --- Funções de Anexos ---
+def _add_history(dfs, lead_id, field, old_val, new_val, user_name, comment=""):
+    hist_df = dfs['Historico']
+    new_id = (hist_df['ID_Historico'].max() + 1) if not hist_df.empty else 1
+    new_entry = pd.DataFrame([{
+        'ID_Historico': new_id, 'ID_Lead': lead_id, 'Timestamp': datetime.now(), 
+        'Usuario': user_name, 'Campo_Alterado': field, 'Valor_Antigo': str(old_val), 
+        'Valor_Novo': str(new_val), 'Comentario': comment
+    }])
+    dfs['Historico'] = pd.concat([hist_df, new_entry], ignore_index=True)
 
 def create_anexo_record(tipo_referencia, id_referencia, nome_arquivo, tipo_arquivo, link_drive, usuario_envio, observacao):
     dfs = get_session_dfs()
@@ -209,12 +226,11 @@ def create_anexo_record(tipo_referencia, id_referencia, nome_arquivo, tipo_arqui
     new_id = (df['ID_Anexo'].max() + 1) if not df.empty else 1
     new_row = {
         'ID_Anexo': new_id, 'Tipo_Referencia': tipo_referencia, 'ID_Referencia': id_referencia,
-        'Nome_Arquivo': nome_arquivo, 'Tipo_Arquivo': tipo_arquivo, 'Link_Drive': link_drive,
-        'Usuario_Envio': usuario_envio, 'Data_Envio': datetime.now(), 'Observacao': observacao
+        'Nome_Arquivo': nome_arquivo, 'Link_Drive': link_drive,
+        'Usuario_Envio': usuario_envio, 'Data_Envio': datetime.now()
     }
     dfs['Anexos'] = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
-    if tipo_referencia == "Lead":
-        _add_history(dfs, id_referencia, "Anexo", "N/A", nome_arquivo, usuario_envio, f"Arquivo '{nome_arquivo}' anexado.")
+    _add_history(dfs, id_referencia, "Anexo", "N/A", nome_arquivo, usuario_envio, f"Arquivo '{nome_arquivo}' anexado.")
     commit_to_file()
     return new_id
 
@@ -222,39 +238,6 @@ def get_anexos_by_referencia(tipo, rid):
     df = get_all('Anexos')
     if df.empty: return pd.DataFrame()
     return df[(df['Tipo_Referencia'] == tipo) & (df['ID_Referencia'] == rid)]
-
-# --- Outras Funções ---
-
-def get_all(name):
-    dfs = get_session_dfs()
-    return dfs.get(name, pd.DataFrame()).copy()
-
-def get_kanban_stages():
-    dfs = get_session_dfs()
-    kc = dfs.get('KanbanConfig', pd.DataFrame())
-    if kc.empty:
-        kc = pd.DataFrame([{'ID_Etapa': i+1, 'Nome_Etapa': e, 'Ordem': i} for i, e in enumerate(DEFAULT_ETAPAS)])
-        dfs['KanbanConfig'] = kc
-    return kc.sort_values('Ordem')['Nome_Etapa'].tolist()
-
-def get_user_by_email(email):
-    df = get_all('Usuarios')
-    if df.empty: return None
-    user = df[df['Email'].str.lower() == email.lower()]
-    return user.to_dict('records')[0] if not user.empty else None
-
-def user_exists(email):
-    df = get_all('Usuarios')
-    return not df.empty and not df[df['Email'].str.lower() == email.lower()].empty
-
-def register_user(name, email, pwd, profile):
-    dfs = get_session_dfs()
-    df = dfs['Usuarios']
-    new_id = (df['ID_Usuario'].max() + 1) if not df.empty else 1
-    new_row = {'ID_Usuario': new_id, 'Nome': name, 'Email': email, 'Senha': pwd, 'Perfil': profile, 'Ativo': True}
-    dfs['Usuarios'] = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
-    commit_to_file()
-    return new_id
 
 def rename_kanban_stage(old, new):
     dfs = get_session_dfs()
@@ -284,5 +267,24 @@ def delete_leads(ids, user):
     if 'Historico' in dfs: dfs['Historico'] = dfs['Historico'][~dfs['Historico']['ID_Lead'].isin(ids)]
     commit_to_file()
     return True
+
+def get_user_by_email(email):
+    df = get_all('Usuarios')
+    if df.empty: return None
+    user = df[df['Email'].str.lower() == email.lower()]
+    return user.to_dict('records')[0] if not user.empty else None
+
+def user_exists(email):
+    df = get_all('Usuarios')
+    return not df.empty and not df[df['Email'].str.lower() == email.lower()].empty
+
+def register_user(name, email, pwd, profile):
+    dfs = get_session_dfs()
+    df = dfs['Usuarios']
+    new_id = (df['ID_Usuario'].max() + 1) if not df.empty else 1
+    new_row = {'ID_Usuario': new_id, 'Nome': name, 'Email': email, 'Senha': pwd, 'Perfil': profile, 'Ativo': True}
+    dfs['Usuarios'] = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
+    commit_to_file()
+    return new_id
 
 def log_system_event(msg, level="INFO"): pass
