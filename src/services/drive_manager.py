@@ -2,6 +2,7 @@
 import streamlit as st
 import os
 import io
+import json
 from datetime import datetime
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
@@ -15,12 +16,12 @@ SCOPES = [
     'https://www.googleapis.com/auth/gmail.send'
 ]
 
-# --- Autenticação OAuth 2.0 (Com Cache para estabilidade) ---
+# --- Autenticação OAuth 2.0 (Nuvem + Local) ---
 @st.cache_resource(show_spinner="Conectando ao Google...")
 def _get_drive_service(force_new_auth=False):
     """
     Autentica na API do Google Drive usando OAuth 2.0.
-    Gera um token.json para persistir a sessão.
+    Suporta leitura de client_secrets via arquivo local ou Streamlit Secrets.
     """
     if force_new_auth and os.path.exists('token.json'):
         os.remove('token.json')
@@ -37,16 +38,35 @@ def _get_drive_service(force_new_auth=False):
                 if os.path.exists('token.json'): os.remove('token.json')
                 return _get_drive_service(force_new_auth=True)
         else:
-            if not os.path.exists('client_secrets.json'):
-                st.error("❌ Arquivo 'client_secrets.json' não encontrado na raiz do projeto.")
+            # 1. Tenta obter credenciais do segredo do Streamlit Cloud
+            client_config = None
+            if "GCP_CLIENT_SECRETS" in st.secrets:
+                try:
+                    client_config = json.loads(st.secrets["GCP_CLIENT_SECRETS"])
+                except Exception as e:
+                    st.error(f"Erro ao ler segredo GCP_CLIENT_SECRETS: {e}")
+            
+            # 2. Se não estiver nos segredos, procura o arquivo local
+            if not client_config and os.path.exists('client_secrets.json'):
+                with open('client_secrets.json', 'r') as f:
+                    client_config = json.load(f)
+
+            if not client_config:
+                st.error("❌ Credenciais do Google (client_secrets) não encontradas nos segredos nem em arquivo local.")
                 return None
+
+            # Inicia o fluxo de autorização
+            # No Streamlit Cloud, o flow.run_local_server pode não abrir o navegador.
+            # Usamos redirect_uri do localhost como padrão.
+            flow = InstalledAppFlow.from_client_config(client_config, SCOPES)
             
-            # Instruções claras para o usuário
-            st.info("ℹ️ Uma nova janela de autorização do Google será aberta no seu navegador.")
-            st.warning("⚠️ Na tela 'O Google não verificou este app', clique em **'Configurações Avançadas'** e depois em **'Ir para Ideal CRM (não seguro)'** para prosseguir.")
-            
-            flow = InstalledAppFlow.from_client_secrets_file('client_secrets.json', SCOPES)
-            creds = flow.run_local_server(port=0, open_browser=True, prompt='consent')
+            try:
+                # O open_browser=True tentará abrir no computador de quem está acessando
+                creds = flow.run_local_server(port=0, open_browser=True, prompt='consent')
+            except Exception as e:
+                st.error(f"Erro no fluxo de autorização: {e}")
+                st.info("Dica: Se estiver na nuvem, certifique-se de que a URL do seu app está nos 'URIs de redirecionamento' do Google Cloud Console.")
+                return None
             
         with open('token.json', 'w') as token:
             token.write(creds.to_json())
@@ -54,12 +74,15 @@ def _get_drive_service(force_new_auth=False):
     try:
         return build('drive', 'v3', credentials=creds)
     except Exception as e:
-        st.error(f"Erro ao construir serviço: {e}")
+        st.error(f"Erro ao construir serviço Google: {e}")
         return None
 
 def check_drive_connection():
     """Verifica se o token atual possui as permissões necessárias."""
     try:
+        service = _get_drive_service()
+        if not service: return False
+        
         if not os.path.exists('token.json'): return False
         creds = Credentials.from_authorized_user_file('token.json', SCOPES)
         scopes = creds.scopes if creds.scopes else []
@@ -67,11 +90,8 @@ def check_drive_connection():
         gmail_ok = 'https://www.googleapis.com/auth/gmail.send' in scopes
         
         if drive_ok and gmail_ok:
-            st.success("✅ Google Drive e Gmail Conectados!")
             return True
-        else:
-            st.warning("⚠️ Permissões incompletas detectadas.")
-            return False
+        return False
     except Exception:
         return False
 
@@ -97,7 +117,7 @@ def get_date_folder_structure(root_id):
     """Retorna o ID da pasta do mês atual, criando a estrutura Ano/Mês se necessário."""
     now = datetime.now()
     ano_str = str(now.year)
-    mes_str = now.strftime('%B').capitalize() # Ex: Março
+    mes_str = now.strftime('%B').capitalize()
     
     ano_id = find_or_create_folder(ano_str, root_id)
     if not ano_id: return root_id
