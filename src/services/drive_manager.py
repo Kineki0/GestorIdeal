@@ -20,7 +20,7 @@ def get_current_url():
     return "https://gestorideal.streamlit.app"
 
 def _get_credentials_no_widgets():
-    """Tenta carregar as credenciais sem causar warnings ou usar widgets."""
+    """Busca credenciais sem usar widgets ou causar warnings."""
     if os.path.exists('token.json'):
         try:
             creds = Credentials.from_authorized_user_file('token.json', SCOPES)
@@ -36,7 +36,6 @@ def _get_credentials_no_widgets():
     return None
 
 def _get_drive_service(force_new_auth=False):
-    """Gerencia a conexão com o Google Drive de forma resiliente para nuvem."""
     if force_new_auth:
         if os.path.exists('token.json'): os.remove('token.json')
         st.cache_resource.clear()
@@ -45,7 +44,7 @@ def _get_drive_service(force_new_auth=False):
     if creds:
         return build('drive', 'v3', credentials=creds)
 
-    # --- FLUXO DE AUTORIZAÇÃO (Callback) ---
+    # --- FLUXO DE AUTORIZAÇÃO ROBUSTO ---
     client_config = None
     if "GCP_CLIENT_SECRETS" in st.secrets:
         client_config = json.loads(st.secrets["GCP_CLIENT_SECRETS"])
@@ -57,41 +56,50 @@ def _get_drive_service(force_new_auth=False):
         st.error("❌ Credenciais do Google não encontradas.")
         return None
 
-    # Redirect URI deve ser EXATAMENTE a URL do app
-    redirect_uri = get_current_url()
-    flow = Flow.from_client_config(client_config, scopes=SCOPES, redirect_uri=redirect_uri)
-
-    # CAPTURA DO CÓDIGO (Quando o Google volta para o app)
+    # Inicializa o Flow
+    flow = Flow.from_client_config(client_config, scopes=SCOPES, redirect_uri=get_current_url())
+    
+    # Captura o código da URL
     auth_code = st.query_params.get("code")
     
     if auth_code:
         try:
-            # Na nuvem, o 'state' pode se perder. 
-            # Se falhar com state, tentamos sem (menos seguro mas funcional na nuvem)
-            flow.fetch_token(code=auth_code)
+            # RECUPERA O VERIFICADOR SALVO (Resolve o erro Missing code verifier)
+            code_verifier = st.session_state.get('oauth_code_verifier')
+            
+            # Tenta buscar o token usando o verificado salvo
+            flow.fetch_token(code=auth_code, code_verifier=code_verifier)
+            
             creds = flow.credentials
             with open('token.json', 'w') as token:
                 token.write(creds.to_json())
+            
+            # Limpa tudo e recarrega
             st.query_params.clear()
+            if 'oauth_code_verifier' in st.session_state: 
+                del st.session_state['oauth_code_verifier']
+            
+            st.success("✅ Conectado com sucesso!")
             st.rerun()
         except Exception as e:
-            st.error(f"Erro ao processar código: {e}")
-            st.info("Dica: Tente clicar em autorizar novamente.")
+            st.error(f"Erro na autorização: {e}")
+            st.info("Dica: Clique novamente no botão de conectar.")
             st.query_params.clear()
             return None
     else:
-        # Se não logado e sem código, mostra o botão
+        # Gera URL e salva o verificador na sessão antes de redirecionar
         auth_url, _ = flow.authorization_url(prompt='consent', access_type='offline')
         
-        st.info("🔒 É necessário autorizar o acesso ao Google.")
-        # Usamos link_button que é a forma oficial do Streamlit de redirecionar
-        st.link_button("🔗 CLIQUE AQUI PARA CONECTAR AO GOOGLE", auth_url, use_container_width=True)
+        # O flow gera um code_verifier automaticamente, precisamos guardar ele!
+        st.session_state['oauth_code_verifier'] = flow.code_verifier
+        
+        st.info("🔒 Conexão necessária com o Google.")
+        st.link_button("🔗 CLIQUE AQUI PARA CONECTAR", auth_url, use_container_width=True)
         st.stop()
     
     return None
 
 def check_drive_connection():
-    """Verifica conexão ativa."""
     creds = _get_credentials_no_widgets()
     return creds is not None and creds.valid
 
