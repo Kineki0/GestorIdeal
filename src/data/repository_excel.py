@@ -188,7 +188,7 @@ def create_lead(data, user):
         'Descricao': '', 'Checklist': '[]'
     }
     dfs['Leads'] = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
-    _add_history(dfs, new_id, "Sistema", "Criação", "", "", "Lead cadastrado no sistema")
+    _add_history(dfs, new_id, "Sistema", "Ação", "Lead", "N/A", "Criado", "Lead cadastrado no sistema")
     commit_to_file()
     return new_id
 
