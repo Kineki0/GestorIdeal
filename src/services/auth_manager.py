@@ -3,10 +3,18 @@ import streamlit as st
 from data import repository_excel as repository
 import utils
 import config
+from datetime import datetime, timedelta
+import extra_streamlit_components as stx
+
+def _get_cookie_manager():
+    """Inicializa o gerenciador de cookies de forma persistente."""
+    if 'cookie_manager' not in st.session_state:
+        st.session_state.cookie_manager = stx.CookieManager()
+    return st.session_state.cookie_manager
 
 def login(email, password):
     """
-    Autentica um usuário e o armazena na sessão do Streamlit.
+    Autentica um usuário e o armazena na sessão e em um cookie.
     """
     if not email or not password:
         st.error("Por favor, insira email e senha.")
@@ -22,6 +30,11 @@ def login(email, password):
             "Email": user_data['Email'],
             "Perfil": user_data['Perfil']
         }
+        
+        # SALVA O LOGIN NOS COOKIES (Válido por 30 dias)
+        cookie_manager = _get_cookie_manager()
+        cookie_manager.set('gestor_ideal_user', email, expires_at=datetime.now() + timedelta(days=30))
+        
         repository.log_system_event(f"Login bem-sucedido para o usuário: {email}", "INFO")
         return True
     else:
@@ -31,12 +44,17 @@ def login(email, password):
 
 def logout():
     """
-    Realiza o logout do usuário, limpando a sessão.
+    Realiza o logout do usuário, limpando a sessão e os cookies.
     """
     if 'user' in st.session_state:
         repository.log_system_event(f"Logout do usuário: {st.session_state['user']['Email']}", "INFO")
         del st.session_state['user']
     st.session_state['logged_in'] = False
+    
+    # REMOVE O COOKIE
+    cookie_manager = _get_cookie_manager()
+    cookie_manager.delete('gestor_ideal_user')
+    
     st.success("Logout realizado com sucesso!")
     st.rerun()
 
@@ -45,8 +63,28 @@ def get_user():
     return st.session_state.get('user')
 
 def is_logged_in():
-    """Verifica se há um usuário logado na sessão."""
-    return st.session_state.get('logged_in', False)
+    """Verifica se há um usuário logado na sessão ou nos cookies."""
+    # 1. Verifica na sessão atual
+    if st.session_state.get('logged_in', False):
+        return True
+    
+    # 2. Tenta recuperar do cookie se não estiver na sessão
+    cookie_manager = _get_cookie_manager()
+    saved_email = cookie_manager.get('gestor_ideal_user')
+    
+    if saved_email:
+        user_data = repository.get_user_by_email(saved_email)
+        if user_data and user_data.get('Ativo', False):
+            st.session_state['logged_in'] = True
+            st.session_state['user'] = {
+                "ID_Usuario": user_data['ID_Usuario'],
+                "Nome": user_data['Nome'],
+                "Email": user_data['Email'],
+                "Perfil": user_data['Perfil']
+            }
+            return True
+            
+    return False
 
 def has_permission(required_profiles):
     """
@@ -55,7 +93,10 @@ def has_permission(required_profiles):
     if not is_logged_in():
         return False
     
-    user_profile = st.session_state.user.get('Perfil')
+    user_data = get_user()
+    if not user_data: return False
+    
+    user_profile = user_data.get('Perfil')
     return user_profile in required_profiles
 
 def display_login_form():
@@ -64,7 +105,6 @@ def display_login_form():
     """
     st.header("Ideal - Login")
 
-    # Adiciona a lógica para exibir o formulário de registro se o estado for setado
     if st.session_state.get('show_registration_form', False):
         display_registration_form()
     elif st.session_state.get('show_forgot_password_form', False):
@@ -84,11 +124,11 @@ def display_login_form():
         st.markdown("---")
         col1, col2 = st.columns(2)
         with col1:
-            if st.button("Criar Nova Conta", width='stretch'):
+            if st.button("Criar Nova Conta"):
                 st.session_state['show_registration_form'] = True
                 st.rerun()
         with col2:
-            if st.button("Esqueci minha senha", width='stretch'):
+            if st.button("Esqueci minha senha"):
                 st.session_state['show_forgot_password_form'] = True
                 st.rerun()
 
@@ -104,7 +144,6 @@ def display_registration_form():
         password = st.text_input("Senha", type="password")
         confirm_password = st.text_input("Confirmar Senha", type="password")
         
-        # Get profile options from config.py, excluding 'Admin' for self-registration
         profile_options = [profile_key for profile_key in config.PERFIS_USUARIO.keys() if profile_key != "Admin"]
         profile_display_map = {config.PERFIS_USUARIO[key]: key for key in profile_options}
         selected_profile_display = st.selectbox("Perfil", options=list(profile_display_map.keys()))
@@ -124,7 +163,7 @@ def display_registration_form():
                 new_user_id = repository.register_user(name, email, hashed_password, profile)
                 if new_user_id:
                     st.success("Usuário cadastrado com sucesso! Faça login para continuar.")
-                    st.session_state['show_registration_form'] = False # Go back to login form
+                    st.session_state['show_registration_form'] = False
                     st.rerun()
                 else:
                     st.error("Ocorreu um erro ao cadastrar o usuário.")
@@ -149,7 +188,6 @@ def display_forgot_password_form():
             user_data = repository.get_user_by_email(email)
             if user_data:
                 token = repository.create_password_reset_token(email)
-                # Enviar e-mail real
                 if email_manager.send_password_reset_email(email, token):
                     st.success(f"Um e-mail de recuperação foi enviado para {email}.")
                     st.session_state['reset_password_token'] = token 
@@ -193,7 +231,7 @@ def display_reset_password_form():
                         repository.invalidate_password_reset_token(input_token)
                         st.success("Sua senha foi redefinida com sucesso! Faça login com a nova senha.")
                         st.session_state['show_reset_password_form'] = False
-                        st.session_state['reset_password_token'] = '' # Limpa o token da sessão
+                        st.session_state['reset_password_token'] = ''
                         st.rerun()
                     else:
                         st.error("Ocorreu um erro ao atualizar a senha.")
@@ -202,7 +240,5 @@ def display_reset_password_form():
 
     if st.button("Voltar para o Login"):
         st.session_state['show_reset_password_form'] = False
-        st.session_state['reset_password_token'] = '' # Limpa o token da sessão
+        st.session_state['reset_password_token'] = ''
         st.rerun()
-
-

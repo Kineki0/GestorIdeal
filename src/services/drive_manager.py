@@ -9,6 +9,7 @@ from google_auth_oauthlib.flow import Flow
 from google.auth.transport.requests import Request
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseUpload
+import extra_streamlit_components as stx
 
 # Scopes necessários
 SCOPES = [
@@ -19,8 +20,12 @@ SCOPES = [
 def get_current_url():
     return "https://gestorideal.streamlit.app"
 
+def _get_cookie_manager():
+    if 'cookie_manager_oauth' not in st.session_state:
+        st.session_state.cookie_manager_oauth = stx.CookieManager()
+    return st.session_state.cookie_manager_oauth
+
 def _get_credentials_no_widgets():
-    """Busca credenciais sem usar widgets ou causar warnings."""
     if os.path.exists('token.json'):
         try:
             creds = Credentials.from_authorized_user_file('token.json', SCOPES)
@@ -44,7 +49,7 @@ def _get_drive_service(force_new_auth=False):
     if creds:
         return build('drive', 'v3', credentials=creds)
 
-    # --- FLUXO DE AUTORIZAÇÃO ROBUSTO ---
+    # --- FLUXO DE AUTORIZAÇÃO VIA COOKIES (Super Seguro para Nuvem) ---
     client_config = None
     if "GCP_CLIENT_SECRETS" in st.secrets:
         client_config = json.loads(st.secrets["GCP_CLIENT_SECRETS"])
@@ -56,45 +61,48 @@ def _get_drive_service(force_new_auth=False):
         st.error("❌ Credenciais do Google não encontradas.")
         return None
 
-    # Inicializa o Flow
     flow = Flow.from_client_config(client_config, scopes=SCOPES, redirect_uri=get_current_url())
     
-    # Captura o código da URL
+    cookie_manager = _get_cookie_manager()
     auth_code = st.query_params.get("code")
     
     if auth_code:
         try:
-            # RECUPERA O VERIFICADOR SALVO (Resolve o erro Missing code verifier)
-            code_verifier = st.session_state.get('oauth_code_verifier')
+            # Recupera o verificador do COOKIE (mais estável que session_state)
+            code_verifier = cookie_manager.get('oauth_verifier')
             
-            # Tenta buscar o token usando o verificado salvo
+            if not code_verifier:
+                # Se o cookie ainda não carregou, espera um pouco (Streamlit async)
+                st.warning("🔄 Finalizando conexão... aguarde um instante.")
+                st.stop()
+
             flow.fetch_token(code=auth_code, code_verifier=code_verifier)
             
-            creds = flow.credentials
             with open('token.json', 'w') as token:
-                token.write(creds.to_json())
+                token.write(flow.credentials.to_json())
             
-            # Limpa tudo e recarrega
+            # Limpa tudo
             st.query_params.clear()
-            if 'oauth_code_verifier' in st.session_state: 
-                del st.session_state['oauth_code_verifier']
-            
+            cookie_manager.delete('oauth_verifier')
             st.success("✅ Conectado com sucesso!")
             st.rerun()
         except Exception as e:
-            st.error(f"Erro na autorização: {e}")
-            st.info("Dica: Clique novamente no botão de conectar.")
+            if "code verifier" in str(e).lower():
+                st.error("❌ Falha na chave de segurança. Por favor, tente clicar no botão de conectar novamente.")
+            else:
+                st.error(f"Erro na autorização: {e}")
             st.query_params.clear()
             return None
     else:
-        # Gera URL e salva o verificador na sessão antes de redirecionar
+        # Gera URL e salva o verificador no COOKIE
         auth_url, _ = flow.authorization_url(prompt='consent', access_type='offline')
         
-        # O flow gera um code_verifier automaticamente, precisamos guardar ele!
-        st.session_state['oauth_code_verifier'] = flow.code_verifier
+        # Salva a chave no navegador do usuário
+        cookie_manager.set('oauth_verifier', flow.code_verifier, key="set_verifier")
         
-        st.info("🔒 Conexão necessária com o Google.")
-        st.link_button("🔗 CLIQUE AQUI PARA CONECTAR", auth_url, use_container_width=True)
+        st.info("🔒 É necessário conectar sua conta Google.")
+        st.link_button("🔗 CLIQUE AQUI PARA CONECTAR AO GOOGLE", auth_url, use_container_width=True)
+        st.warning("⚠️ Uma nova aba será aberta. Após autorizar, o sistema carregará nela.")
         st.stop()
     
     return None

@@ -33,9 +33,9 @@ def main():
     if 'last_auto_save' not in st.session_state:
         st.session_state.last_auto_save = time.time()
     
-    # Verifica se passaram 45 segundos desde o último salvamento
+    # Verifica se passaram 25 segundos desde o último salvamento
     current_time = time.time()
-    if current_time - st.session_state.last_auto_save > 45:
+    if current_time - st.session_state.last_auto_save > 25:
         repository.commit_to_file()
         st.session_state.last_auto_save = current_time
         st.toast("💾 Alterações salvas automaticamente!", icon="✅")
