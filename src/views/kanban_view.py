@@ -161,9 +161,15 @@ def _display_lead_details_modal(lead_id):
 def display():
     st.markdown("""
         <style>
-            [data-testid="stHorizontalBlock"] { flex-wrap: nowrap !important; overflow-x: auto !important; gap: 1rem !important; padding-bottom: 20px !important; }
-            [data-testid="column"] { min-width: 450px !important; border-right: 2px solid #004a99 !important; padding: 15px 20px !important; background-color: rgba(0, 74, 153, 0.03) !important; }
-            [data-testid="column"]:last-child { border-right: none !important; }
+            [data-testid="stHorizontalBlock"] { flex-wrap: nowrap !important; overflow-x: auto !important; gap: 1.5rem !important; padding: 20px 10px !important; }
+            [data-testid="column"] { 
+                min-width: 450px !important; 
+                border: 1px solid rgba(0,74,153,0.2) !important; 
+                border-radius: 15px !important; 
+                padding: 20px !important; 
+                background-color: rgba(0, 74, 153, 0.02) !important;
+                box-shadow: 0 4px 6px rgba(0,0,0,0.02) !important;
+            }
             .stButton > button[key^="card_btn_"] { height: auto !important; padding: 15px !important; text-align: left !important; display: block !important; border-radius: 12px !important; border: 1px solid rgba(0,74,153,0.2) !important; background-color: var(--secondary-background-color) !important; transition: 0.3s !important; line-height: 1.5 !important; }
             .stButton > button[key^="card_btn_"] div p { white-space: pre-wrap !important; word-wrap: break-word !important; }
             .stButton > button[key^="card_btn_"]:hover { border-color: #004a99 !important; box-shadow: 0 4px 12px rgba(0,74,153,0.1) !important; transform: translateY(-2px) !important; }
