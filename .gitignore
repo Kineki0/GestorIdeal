@@ -1,0 +1,19 @@
+# Arquivos de segredos do Google (NUNCA subir para o GitHub)
+token.json
+client_secrets.json
+
+# Arquivo de dados (Opcional: se quiser que o tester comece do zero na nuvem)
+# data_excel/database.xlsx
+
+# Configurações locais do Streamlit
+.streamlit/secrets.toml
+.streamlit/config.toml
+
+# Pastas de sistema
+__pycache__/
+.env
+.venv
+env/
+venv/
+.vscode/
+.idea/
