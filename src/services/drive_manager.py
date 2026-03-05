@@ -9,6 +9,7 @@ from google_auth_oauthlib.flow import Flow
 from google.auth.transport.requests import Request
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseUpload
+import extra_streamlit_components as stx
 
 # Scopes necessários
 SCOPES = [
@@ -16,8 +17,18 @@ SCOPES = [
     'https://www.googleapis.com/auth/gmail.send'
 ]
 
+def get_current_url():
+    """URL oficial do app na nuvem."""
+    return "https://gestorideal.streamlit.app"
+
+def _get_cookie_manager():
+    """Gerenciador de cookies para persistência de segurança."""
+    if 'stx_cookie_manager' not in st.session_state:
+        st.session_state.stx_cookie_manager = stx.CookieManager()
+    return st.session_state.stx_cookie_manager
+
 def _get_credentials_file():
-    """Tenta carregar as credenciais do token.json local."""
+    """Carrega o token silenciosamente se ele existir."""
     if os.path.exists('token.json'):
         try:
             creds = Credentials.from_authorized_user_file('token.json', SCOPES)
@@ -31,14 +42,15 @@ def _get_credentials_file():
     return None
 
 def _get_drive_service(force_new_auth=False):
-    """Gerencia a conexão Google usando fluxo de código manual (Infalível na nuvem)."""
+    """Fluxo de conexão totalmente automático e amigável para o cliente."""
     if force_new_auth and os.path.exists('token.json'):
         os.remove('token.json')
+        st.cache_resource.clear()
 
     creds = _get_credentials_file()
     if creds: return build('drive', 'v3', credentials=creds)
 
-    # --- FLUXO MANUAL ---
+    # --- FLUXO AUTOMÁTICO (Client Friendly) ---
     client_config = None
     if "GCP_CLIENT_SECRETS" in st.secrets:
         client_config = json.loads(st.secrets["GCP_CLIENT_SECRETS"])
@@ -46,38 +58,50 @@ def _get_drive_service(force_new_auth=False):
         with open('client_secrets.json', 'r') as f: client_config = json.load(f)
 
     if not client_config:
-        st.error("❌ Credenciais do Google não encontradas nos Secrets.")
+        st.error("❌ Erro: Credenciais do Google não configuradas.")
         return None
 
-    # Usamos o redirecionamento para o localhost como sinal de fluxo manual
-    flow = Flow.from_client_config(client_config, scopes=SCOPES, redirect_uri='http://localhost')
+    flow = Flow.from_client_config(client_config, scopes=SCOPES, redirect_uri=get_current_url())
+    cookie_manager = _get_cookie_manager()
     
-    auth_url, _ = flow.authorization_url(prompt='consent', access_type='offline')
+    # 1. Verifica se o Google enviou o código de volta pela URL
+    auth_code = st.query_params.get("code")
     
-    st.subheader("🔗 Conectar ao Google Drive")
-    st.info("O sistema precisa de autorização para salvar seus dados.")
-    
-    st.markdown(f"1. [CLIQUE AQUI para abrir a página de autorização]({auth_url})")
-    st.markdown("2. Faça o login e clique em **Continuar/Permitir**.")
-    st.markdown("3. Você será enviado para uma página que 'não carrega' ou dá erro. **NÃO SE PREOCUPE!**")
-    st.markdown("4. Vá na barra de endereços do seu navegador, procure por **code=...** e copie tudo o que vem depois do igual até o próximo símbolo de &.")
-    
-    auth_code = st.text_input("5. Cole o código de autorização aqui:")
-    
-    if st.button("FINALIZAR CONEXÃO", type="primary", use_container_width=True):
-        if auth_code:
-            try:
-                flow.fetch_token(code=auth_code)
-                with open('token.json', 'w') as token:
-                    token.write(flow.credentials.to_json())
-                st.success("✅ Conectado com sucesso! Recarregando...")
-                st.rerun()
-            except Exception as e:
-                st.error(f"Código inválido. Por favor, tente novamente. ({e})")
+    if auth_code:
+        # Recupera o verificador do cookie (gerado antes do redirecionamento)
+        verifier = cookie_manager.get('oauth_v')
+        
+        if verifier:
+            with st.spinner("🚀 Finalizando conexão segura..."):
+                try:
+                    flow.fetch_token(code=auth_code, code_verifier=verifier)
+                    with open('token.json', 'w') as token:
+                        token.write(flow.credentials.to_json())
+                    st.query_params.clear()
+                    cookie_manager.delete('oauth_v')
+                    st.rerun()
+                except Exception as e:
+                    st.error("Falha ao validar login. Por favor, tente novamente.")
+                    st.query_params.clear()
         else:
-            st.warning("Insira o código gerado pelo Google.")
+            # Se o cookie ainda não carregou, recarrega a página para forçar a leitura
+            st.info("🔄 Sincronizando com o Google...")
+            st.rerun()
+    else:
+        # 2. Se não está conectado, mostra o botão elegante
+        st.subheader("👋 Bem-vindo ao Gestor Ideal")
+        st.write("Para começar, precisamos conectar sua conta Google para salvar os arquivos com segurança.")
+        
+        auth_url, state = flow.authorization_url(prompt='consent', access_type='offline')
+        
+        # O pulo do gato: salvar o verifier no cookie ANTES de clicar
+        cookie_manager.set('oauth_v', flow.code_verifier, key="set_v")
+        
+        if st.link_button("🔗 CONECTAR GOOGLE DRIVE", auth_url, use_container_width=True, type="primary"):
+            pass # O link_button já faz o redirecionamento
+        
+        st.stop()
     
-    st.stop()
     return None
 
 def check_drive_connection():
