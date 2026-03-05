@@ -10,23 +10,32 @@ from config import ETAPAS_KANBAN, NUCLEOS, TAGS_PRIORIDADE, TAGS_RISCO, TAGS_ESF
 def _display_create_lead_form():
     if not st.session_state.get('show_create_lead_modal', False): return
     with st.container(border=True):
-        st.subheader("🚀 Novo Lead")
-        with st.form("form_create_lead_new_v3", clear_on_submit=True):
+        st.subheader("🚀 Cadastro de Novo Lead")
+        with st.form("form_create_lead_strict", clear_on_submit=True):
             c1, c2 = st.columns(2)
             razao = c1.text_input("Razão Social *")
-            telefone = c1.text_input("Telefone *")
-            contato = c2.text_input("Contato *")
+            telefone = c1.text_input("Telefone (WhatsApp) *")
+            contato = c2.text_input("Nome do Contato *")
             cnpj = c2.text_input("CNPJ *")
             email = st.text_input("Email (Opcional)")
             
-            if st.form_submit_button("CADASTRAR LEAD", use_container_width=True, type="primary"):
+            st.info("💡 Prazo e Observações serão definidos na etapa 'Em Progresso'.")
+            
+            if st.form_submit_button("CADASTRAR NO SISTEMA", use_container_width=True, type="primary"):
+                # VALIDAÇÃO RIGOROSA conforme solicitado
                 if not razao or not telefone or not contato or not cnpj:
-                    st.error("Preencha todos os campos obrigatórios (*)")
+                    st.error("❌ ERRO: Razão Social, Telefone, Contato e CNPJ são OBRIGATÓRIOS.")
                 else:
-                    repository.create_lead({'Razao_Social': razao, 'Telefone': telefone, 'Nome_Contato': contato, 'CNPJ': cnpj, 'Email': email}, auth_manager.get_user())
+                    repository.create_lead({
+                        'Razao_Social': razao, 
+                        'Telefone': telefone, 
+                        'Nome_Contato': contato, 
+                        'CNPJ': cnpj, 
+                        'Email': email
+                    }, auth_manager.get_user())
                     st.session_state['show_create_lead_modal'] = False
                     st.rerun()
-        if st.button("CANCELAR", use_container_width=True):
+        if st.button("CANCELAR CADASTRO", use_container_width=True):
             st.session_state['show_create_lead_modal'] = False
             st.rerun()
 
@@ -39,63 +48,76 @@ def _display_lead_details_modal(lead_id):
     
     with st.container(border=True):
         h1, h2 = st.columns([9, 1])
-        h1.subheader(f"📄 #{p['ID_Lead']} - {p['Razao_Social']}")
-        
-        pdf_bytes = pdf_manager.generate_lead_pdf(p)
-        st.download_button("📄 Baixar Ficha PDF", pdf_bytes, f"Lead_{p['ID_Lead']}.pdf", "application/pdf")
-
+        h1.subheader(f"📄 Gestão do Processo: {p['Razao_Social']} (#{p['ID_Lead']})")
         if h2.button("✖️", key=f"close_{lead_id}"):
             st.session_state['show_fullscreen_details'] = False
             st.rerun()
 
-        st.write("### ⚙️ Gestão de Fluxo")
+        # --- GESTÃO DE FLUXO (COM OPÇÃO DE VOLTAR) ---
+        st.write("### ⚙️ Movimentação de Etapa")
         col_act1, col_act2, col_act3 = st.columns(3)
         stages = ETAPAS_KANBAN
         curr_idx = stages.index(p['Etapa_Atual'])
         
+        # Botão VOLTAR (Bloqueado em Leads e Ganhos/Perdidos)
         if curr_idx > 0 and p['Etapa_Atual'] not in ['Ganhos', 'Perdidos']:
-            if col_act1.button(f"⬅️ Voltar para {stages[curr_idx-1]}", use_container_width=True):
-                repository.update_lead(lead_id, {'Etapa_Atual': stages[curr_idx-1]}, auth_manager.get_user(), f"Recuado para {stages[curr_idx-1]}")
+            if col_act1.button(f"⬅️ Recuar para {stages[curr_idx-1]}", use_container_width=True):
+                repository.update_lead(lead_id, {'Etapa_Atual': stages[curr_idx-1]}, auth_manager.get_user(), f"Processo recuado para {stages[curr_idx-1]}")
                 st.rerun()
         
+        # Botão AVANÇAR (Bloqueado em Ganhos/Perdidos)
         if curr_idx < len(stages) - 1 and p['Etapa_Atual'] not in ['Ganhos', 'Perdidos']:
             if col_act2.button(f"➡️ Avançar para {stages[curr_idx+1]}", use_container_width=True, type="primary"):
-                repository.update_lead(lead_id, {'Etapa_Atual': stages[curr_idx+1]}, auth_manager.get_user(), f"Avançado para {stages[curr_idx+1]}")
+                repository.update_lead(lead_id, {'Etapa_Atual': stages[curr_idx+1]}, auth_manager.get_user(), f"Processo avançado para {stages[curr_idx+1]}")
                 st.rerun()
         
+        # ATALHOS FINAIS
         with col_act3:
             ga, pe = st.columns(2)
-            if ga.button("🏆 Ganho", use_container_width=True):
-                repository.update_lead(lead_id, {'Etapa_Atual': 'Ganhos'}, auth_manager.get_user(), "Venda!")
+            if ga.button("🏆 GANHO", use_container_width=True):
+                repository.update_lead(lead_id, {'Etapa_Atual': 'Ganhos'}, auth_manager.get_user(), "🎯 VENDA CONCLUÍDA")
                 st.rerun()
-            if pe.button("📉 Perdido", use_container_width=True):
-                repository.update_lead(lead_id, {'Etapa_Atual': 'Perdidos'}, auth_manager.get_user(), "Perdido")
+            if pe.button("📉 PERDIDO", use_container_width=True):
+                repository.update_lead(lead_id, {'Etapa_Atual': 'Perdidos'}, auth_manager.get_user(), "❌ PROCESSO ENCERRADO")
                 st.rerun()
 
         st.divider()
-        tab1, tab2, tab3, tab4 = st.tabs(["📋 Dados", "✅ Checklist", "📂 Anexos", "📜 Histórico"])
+
+        # --- TABS DE INFORMAÇÃO ---
+        tab1, tab2, tab3, tab4 = st.tabs(["📋 Dados & Tags", "✅ Checklist", "📂 Arquivos", "📜 Histórico"])
         
         with tab1:
             c1, c2 = st.columns(2)
-            new_razao = c1.text_input("Razão Social", p['Razao_Social'])
-            new_tel = c1.text_input("Telefone", p['Telefone'])
-            new_nucleo = c1.selectbox("Núcleo", NUCLEOS, index=NUCLEOS.index(p['Nucleo']) if p['Nucleo'] in NUCLEOS else 0)
-            new_prio = c2.selectbox("Prioridade", TAGS_PRIORIDADE, index=TAGS_PRIORIDADE.index(p['Prioridade']) if p['Prioridade'] in TAGS_PRIORIDADE else 1)
-            new_prazo = c2.date_input("Próximo Retorno (Prazo)", value=pd.to_datetime(p['Prazo']).date() if pd.notna(p['Prazo']) else None)
-            new_desc = st.text_area("Descrição do Processo (Editável)", p['Descricao'], height=150)
+            with c1:
+                new_razao = st.text_input("Razão Social", p['Razao_Social'])
+                new_tel = st.text_input("Telefone", p['Telefone'])
+                new_email = st.text_input("Email", p['Email'])
+                new_nucleo = st.selectbox("Núcleo Responsável", NUCLEOS, index=NUCLEOS.index(p['Nucleo']) if p['Nucleo'] in NUCLEOS else 0)
+            with c2:
+                new_prio = st.selectbox("Prioridade", TAGS_PRIORIDADE, index=TAGS_PRIORIDADE.index(p['Prioridade']) if p['Prioridade'] in TAGS_PRIORIDADE else 1)
+                new_risco = st.selectbox("Risco do Negócio", TAGS_RISCO, index=TAGS_RISCO.index(p['Risco']) if p['Risco'] in TAGS_RISCO else 0)
+                new_esforco = st.selectbox("Esforço Necessário", TAGS_ESFORCO, index=TAGS_ESFORCO.index(p['Esforco']) if p['Esforco'] in TAGS_ESFORCO else 0)
+                new_prazo = st.date_input("Próximo Retorno (Prazo)", value=pd.to_datetime(p['Prazo']).date() if pd.notna(p['Prazo']) else None)
             
-            if st.button("SALVAR ALTERAÇÕES", type="primary", use_container_width=True):
-                repository.update_lead(lead_id, {'Razao_Social': new_razao, 'Telefone': new_tel, 'Nucleo': new_nucleo, 'Prioridade': new_prio, 'Prazo': new_prazo, 'Descricao': new_desc}, auth_manager.get_user())
+            new_desc = st.text_area("Descrição Detalhada (Editável)", p['Descricao'], height=150)
+            
+            if st.button("SALVAR TODAS AS ALTERAÇÕES", type="primary", use_container_width=True):
+                repository.update_lead(lead_id, {
+                    'Razao_Social': new_razao, 'Telefone': new_tel, 'Email': new_email,
+                    'Nucleo': new_nucleo, 'Prioridade': new_prio, 'Risco': new_risco,
+                    'Esforco': new_esforco, 'Prazo': new_prazo, 'Descricao': new_desc
+                }, auth_manager.get_user())
                 st.rerun()
 
         with tab2:
-            st.write("### Checklist")
+            st.write("### ✅ Atividades Pendentes")
             items = json.loads(p['Checklist']) if p['Checklist'] and p['Checklist'] != "" else []
-            new_item = st.text_input("Novo item de tarefa...")
-            if st.button("Adicionar Item"):
+            new_item = st.text_input("Adicionar nova tarefa...")
+            if st.button("Adicionar à Lista"):
                 items.append({"task": new_item, "done": False})
                 repository.update_lead(lead_id, {'Checklist': json.dumps(items)}, auth_manager.get_user())
                 st.rerun()
+            
             for i, item in enumerate(items):
                 col_c, col_t = st.columns([0.1, 0.9])
                 if col_c.checkbox("", value=item['done'], key=f"chk_{lead_id}_{i}") != item['done']:
@@ -106,81 +128,45 @@ def _display_lead_details_modal(lead_id):
 
         with tab3:
             if p['Etapa_Atual'] not in ['Ganhos', 'Perdidos']:
-                up = st.file_uploader("Upload de Anexo", key=f"up_{lead_id}")
+                st.write("### 📂 Gestão de Documentos")
+                up = st.file_uploader("Subir novo arquivo para o Drive", key=f"up_{lead_id}")
                 if up:
-                    anexos_manager.attach_file('Lead', lead_id, p['Razao_Social'], up, "Anexo", auth_manager.get_user())
+                    anexos_manager.attach_file('Lead', lead_id, p['Razao_Social'], up, "Anexo Operacional", auth_manager.get_user())
                     st.rerun()
-            else: st.info("Etapa final. Anexos não necessários.")
+            else: st.info("ℹ️ Arquivos não são obrigatórios para leads em Ganhos ou Perdidos.")
 
         with tab4:
-            st.write("### Histórico e Comentários")
+            st.write("### 💬 Central de Notas (Data + Usuário)")
             with st.form(f"comment_{lead_id}"):
                 msg = st.text_area("Nova nota...")
-                if st.form_submit_button("POSTAR"):
+                if st.form_submit_button("POSTAR NOTA"):
                     repository.add_comment_to_lead_history(lead_id, auth_manager.get_user(), msg)
                     st.rerun()
+            
             hist = repository.get_all('Historico')
             if not hist.empty:
                 hist['ID_Lead_Clean'] = pd.to_numeric(hist['ID_Lead'], errors='coerce')
                 hist = hist[hist['ID_Lead_Clean'] == int(lead_id)].sort_values('Timestamp', ascending=False)
             
             c_com, c_sys = st.columns(2)
-            if not hist.empty:
-                with c_com:
-                    st.write("**Notas do Usuário**")
-                    for _, r in hist[hist['Tipo'] == 'Comentário'].iterrows():
-                        st.info(f"👤 {r['Usuario']} em {pd.to_datetime(r['Timestamp']).strftime('%d/%m %H:%M')}\n\n{r['Mensagem']}")
-                with c_sys:
-                    st.write("**Logs do Sistema**")
-                    for _, r in hist[hist['Tipo'] == 'Ação'].iterrows():
-                        st.caption(f"⚙️ {pd.to_datetime(r['Timestamp']).strftime('%d/%m %H:%M')} - Alterou {r['Campo']}")
+            with c_com:
+                st.write("**📝 Notas Internas**")
+                for _, r in hist[hist['Tipo'] == 'Comentário'].iterrows():
+                    st.info(f"👤 {r['Usuario']} | 📅 {pd.to_datetime(r['Timestamp']).strftime('%d/%m %H:%M')}\n\n{r['Mensagem']}")
+            with c_sys:
+                st.write("**⚙️ Logs de Processo**")
+                for _, r in hist[hist['Tipo'] == 'Ação'].iterrows():
+                    st.caption(f"🕒 {pd.to_datetime(r['Timestamp']).strftime('%d/%m %H:%M')} - Alterou {r['Campo']}")
 
 def display():
     st.markdown("""
         <style>
-            /* ESTILO PARA PERMITIR ROLAGEM HORIZONTAL E COLUNAS MAIORES */
-            [data-testid="stHorizontalBlock"] {
-                flex-wrap: nowrap !important;
-                overflow-x: auto !important;
-                gap: 1rem !important;
-                padding-bottom: 20px !important;
-            }
-            
-            [data-testid="column"] {
-                min-width: 450px !important; /* Colunas maiores conforme pedido */
-                border-right: 2px solid #004a99 !important; /* Divisórias visíveis */
-                padding: 15px 20px !important;
-                background-color: rgba(0, 74, 153, 0.03) !important;
-            }
-            
-            [data-testid="column"]:last-child {
-                border-right: none !important;
-            }
-
-            /* ESTILO CARD-BOTÃO */
-            .stButton > button[key^="card_btn_"] {
-                height: auto !important;
-                padding: 15px !important;
-                text-align: left !important;
-                display: block !important;
-                border-radius: 12px !important;
-                border: 1px solid rgba(0,74,153,0.2) !important;
-                background-color: var(--secondary-background-color) !important;
-                transition: 0.3s !important;
-                line-height: 1.5 !important;
-            }
-            
-            .stButton > button[key^="card_btn_"] div p {
-                white-space: pre-wrap !important;
-                word-wrap: break-word !important;
-            }
-            
-            .stButton > button[key^="card_btn_"]:hover {
-                border-color: #004a99 !important;
-                box-shadow: 0 4px 12px rgba(0,74,153,0.1) !important;
-                transform: translateY(-2px) !important;
-            }
-            
+            [data-testid="stHorizontalBlock"] { flex-wrap: nowrap !important; overflow-x: auto !important; gap: 1rem !important; padding-bottom: 20px !important; }
+            [data-testid="column"] { min-width: 450px !important; border-right: 2px solid #004a99 !important; padding: 15px 20px !important; background-color: rgba(0, 74, 153, 0.03) !important; }
+            [data-testid="column"]:last-child { border-right: none !important; }
+            .stButton > button[key^="card_btn_"] { height: auto !important; padding: 15px !important; text-align: left !important; display: block !important; border-radius: 12px !important; border: 1px solid rgba(0,74,153,0.2) !important; background-color: var(--secondary-background-color) !important; transition: 0.3s !important; line-height: 1.5 !important; }
+            .stButton > button[key^="card_btn_"] div p { white-space: pre-wrap !important; word-wrap: break-word !important; }
+            .stButton > button[key^="card_btn_"]:hover { border-color: #004a99 !important; box-shadow: 0 4px 12px rgba(0,74,153,0.1) !important; transform: translateY(-2px) !important; }
             .sla-tag { font-size: 0.7rem; background: #004a99; color: white; padding: 2px 6px; border-radius: 5px; float: right; }
             h3 { color: #004a99 !important; border-bottom: 2px solid #004a99; padding-bottom: 5px; margin-bottom: 20px !important; }
         </style>
@@ -212,8 +198,9 @@ def display():
                 
                 label_text = (
                     f"🏢 {p['Razao_Social']}\n\n"
-                    f"👤 {p['Nome_Contato']} ({dias}d na fase)\n\n"
-                    f"📅 Criado: {criado} | ⏳ Retorno: {retorno}\n\n"
+                    f"📞 {p['Telefone']} | 👤 {p['Nome_Contato']}\n\n"
+                    f"📅 Cadastrado em: {criado} ({dias}d na fase)\n\n"
+                    f"⏳ Próximo Retorno: {retorno}\n\n"
                     f"────────────────────\n\n"
                     f"💬 {p.get('Ultimo_Comentario', 'Sem notas')}"
                 )
@@ -225,9 +212,8 @@ def display():
                         st.rerun()
                     
                     with st.popover("💬 Nota Rápida", use_container_width=True):
-                        quick_note = st.text_area("Escreva sua nota...", key=f"quick_note_area_{p['ID_Lead']}")
-                        if st.button("Salvar Nota", key=f"btn_save_quick_{p['ID_Lead']}", type="primary"):
+                        quick_note = st.text_area("Escreva sua nota...", key=f"quick_note_{p['ID_Lead']}")
+                        if st.button("Salvar Nota", key=f"btn_save_{p['ID_Lead']}", type="primary"):
                             if quick_note:
                                 repository.add_comment_to_lead_history(p['ID_Lead'], auth_manager.get_user(), quick_note)
-                                st.success("Nota salva!")
                                 st.rerun()
