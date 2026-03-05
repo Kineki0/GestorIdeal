@@ -7,48 +7,48 @@ from services import auth_manager, historico_manager, anexos_manager
 from config import TAGS_PROCESSO
 
 def _display_create_lead_form():
-    """Exibe o formulário de criação de lead no topo."""
+    """Exibe o formulário de criação de lead no topo com escopo de variáveis blindado."""
     if not st.session_state.get('show_create_lead_modal', False):
         return
-    etapa = st.session_state.get('create_lead_etapa', "")
+    
+    etapa_v = st.session_state.get('create_lead_etapa', "")
     
     with st.container(border=True):
-        st.subheader(f"🚀 Novo Lead - {etapa}")
-        with st.form("form_create_final_v22", clear_on_submit=True):
-            col_inputs_1, col_inputs_2 = st.columns(2)
-            with col_inputs_1:
-                razao = st.text_input("Razão Social")
-                fantasia = st.text_input("Nome Fantasia")
-                contato = st.text_input("Contato")
-                email = st.text_input("Email")
-            with col_inputs_2:
-                cnpj = st.text_input("CNPJ")
-                prioridade = st.selectbox("Prioridade", ["Baixa", "Média", "Alta"], index=1)
-                prazo = st.date_input("Prazo", value=None)
-                desc = st.text_area("Observações")
+        st.subheader(f"🚀 Novo Lead - {etapa_v}")
+        with st.form("form_create_final_v23", clear_on_submit=True):
+            c1, c2 = st.columns(2)
             
-            # Botões de ação do formulário
-            col_btns = st.columns(2)
-            with col_btns[0]:
-                submit_btn = st.form_submit_button("✅ SALVAR", use_container_width=True, type="primary")
-            with col_btns[1]:
-                cancel_btn = st.form_submit_button("CANCELAR", use_container_width=True)
+            # Definição direta das variáveis para evitar NameError de escopo
+            razao = c1.text_input("Razão Social")
+            fantasia = c1.text_input("Nome Fantasia")
+            contato = c1.text_input("Contato")
+            email = c1.text_input("Email")
+            
+            cnpj = c2.text_input("CNPJ")
+            prioridade = c2.selectbox("Prioridade", ["Baixa", "Média", "Alta"], index=1)
+            prazo = c2.date_input("Prazo", value=None)
+            desc = c2.text_area("Observações")
+            
+            # Botão de salvar dentro do formulário
+            btn_salvar = st.form_submit_button("✅ SALVAR", use_container_width=True, type="primary")
 
-            if submit_btn:
+            if btn_salvar:
                 if not razao or not contato or not email:
                     st.error("⚠️ Preencha os campos obrigatórios: Razão Social, Contato e Email.")
                 else:
-                    repository.create_lead({
+                    lead_payload = {
                         'Descricao': desc, 'Nome_Contato': contato, 'CNPJ': cnpj, 
                         'Email': email, 'Razao_Social': razao, 'Nome_Fantasia': fantasia, 
-                        'Prazo': prazo, 'Prioridade': prioridade, 'etapa_inicial': etapa
-                    }, auth_manager.get_user())
+                        'Prazo': prazo, 'Prioridade': prioridade, 'etapa_inicial': etapa_v
+                    }
+                    repository.create_lead(lead_payload, auth_manager.get_user())
                     st.session_state['show_create_lead_modal'] = False
                     st.rerun()
 
-            if cancel_btn:
-                st.session_state['show_create_lead_modal'] = False
-                st.rerun()
+        # Botão CANCELAR fora do formulário para evitar validações
+        if st.button("CANCELAR", use_container_width=True, key="btn_cancel_create_lead"):
+            st.session_state['show_create_lead_modal'] = False
+            st.rerun()
 
 def _display_lead_details_modal(lead_id):
     """Exibe os detalhes COMPLETOS do lead."""
@@ -73,25 +73,25 @@ def _display_lead_details_modal(lead_id):
             data=pdf_bytes,
             file_name=f"Lead_{p['ID_Lead']}.pdf",
             mime="application/pdf",
-            key=f"pdf_{lead_id}"
+            key=f"pdf_download_{lead_id}"
         )
 
-        if head_c2.button("✖️", key=f"close_det_{lead_id}"):
+        if head_c2.button("✖️", key=f"close_det_btn_{lead_id}"):
             st.session_state['show_fullscreen_details'] = False
             st.rerun()
 
         st.write("**Ações de Fluxo**")
         act_c1, act_c2, act_c3 = st.columns(3)
-        if act_c1.button("➡️ Próxima Etapa", key=f"nxt_{lead_id}", use_container_width=True, type="primary"):
+        if act_c1.button("➡️ Próxima Etapa", key=f"nxt_btn_{lead_id}", use_container_width=True, type="primary"):
             stages = repository.get_kanban_stages()
             curr_idx = stages.index(p['Etapa_Atual'])
             if curr_idx < len(stages) - 1:
                 repository.update_lead(lead_id, {'Etapa_Atual': stages[curr_idx+1]}, auth_manager.get_user(), f"Movido para {stages[curr_idx+1]}")
                 st.rerun()
-        if act_c2.button("✅ Concluir", key=f"dn_{lead_id}", use_container_width=True, type="primary"):
+        if act_c2.button("✅ Concluir", key=f"dn_btn_{lead_id}", use_container_width=True, type="primary"):
             repository.update_lead(lead_id, {'Etapa_Atual': 'Concluído'}, auth_manager.get_user(), "Concluído")
             st.rerun()
-        if act_c3.button("❌ Cancelar Lead", key=f"cnl_{lead_id}", use_container_width=True, type="primary"):
+        if act_c3.button("❌ Cancelar Lead", key=f"cnl_btn_{lead_id}", use_container_width=True, type="primary"):
             repository.update_lead(lead_id, {'Etapa_Atual': 'Cancelado'}, auth_manager.get_user(), "Cancelado")
             st.rerun()
 
@@ -107,8 +107,8 @@ def _display_lead_details_modal(lead_id):
             st.write(f"**Prazo:** {p['Prazo'].strftime('%d/%m/%Y') if pd.notna(p['Prazo']) else 'N/A'}")
             
             valid_tags = [t.strip() for t in str(p.get('Tags', '')).split(',') if t.strip() in TAGS_PROCESSO]
-            tags = st.multiselect("Tags", TAGS_PROCESSO, default=valid_tags, key=f"tgs_{lead_id}")
-            if st.button("Salvar Tags", key=f"btgs_{lead_id}", type="primary"):
+            tags = st.multiselect("Tags", TAGS_PROCESSO, default=valid_tags, key=f"tgs_sel_{lead_id}")
+            if st.button("Salvar Tags", key=f"btgs_save_{lead_id}", type="primary"):
                 repository.update_lead(lead_id, {"Tags": ",".join(tags)}, auth_manager.get_user())
                 st.rerun()
 
@@ -119,9 +119,9 @@ def _display_lead_details_modal(lead_id):
         for _, a in anexos.iterrows(): st.markdown(f"- [{a['Nome_Arquivo']}]({a['Link_Drive']})")
         
         with st.expander("➕ Adicionar Anexo"):
-            up_f = st.file_uploader("Arquivo", key=f"up_{lead_id}")
-            up_d = st.text_input("Descrição", key=f"desc_{lead_id}")
-            if st.button("Upload", key=f"fbtn_{lead_id}", type="primary"):
+            up_f = st.file_uploader("Arquivo", key=f"up_f_{lead_id}")
+            up_d = st.text_input("Descrição", key=f"up_d_{lead_id}")
+            if st.button("Upload", key=f"up_b_{lead_id}", type="primary"):
                 if up_f and up_d:
                     if anexos_manager.attach_file('Lead', lead_id, p.get('Razao_Social', 'N/A'), up_f, up_d, auth_manager.get_user()):
                         st.rerun()
@@ -140,7 +140,6 @@ def display():
     # CSS PADRONIZADO
     st.markdown("""
         <style>
-            /* PADRONIZAÇÃO DE BOTÕES - FIM DO VERMELHO */
             .stButton > button[kind="primary"] {
                 background-color: #004a99 !important;
                 color: white !important;
@@ -234,16 +233,16 @@ def display():
 
     # --- MODAIS E INTERFACES DE TOPO ---
     if st.session_state.get('show_add_stage_modal'):
-        stages = repository.get_kanban_stages()
+        stages_v = repository.get_kanban_stages()
         with st.container(border=True):
             st.subheader("🚀 Adicionar Nova Coluna")
             n_name = st.text_input("Nome da Etapa")
-            pos_options = ["No Início"] + [f"Depois de '{s}'" for s in stages]
+            pos_options = ["No Início"] + [f"Depois de '{s}'" for s in stages_v]
             pos_sel = st.selectbox("Posição:", pos_options, index=len(pos_options)-1)
             b_c1, b_c2 = st.columns(2)
             if b_c1.button("CRIAR", type="primary", use_container_width=True):
                 if n_name:
-                    new_order = 0 if pos_sel == "No Início" else stages.index(pos_sel.replace("Depois de '", "").replace("'", "")) + 1
+                    new_order = 0 if pos_sel == "No Início" else stages_v.index(pos_sel.replace("Depois de '", "").replace("'", "")) + 1
                     repository.add_kanban_stage(n_name, insert_at_order=new_order)
                     st.session_state['show_add_stage_modal'] = False
                     st.rerun()
@@ -267,10 +266,10 @@ def display():
                 st.rerun()
 
     if st.session_state.get('show_bulk_delete'):
-        all_leads = repository.get_detailed_leads()
+        all_leads_v = repository.get_detailed_leads()
         with st.container(border=True):
             st.subheader("🗑️ Painel de Exclusão em Massa")
-            options = {f"#{r['ID_Lead']} - {r.get('Razao_Social') or 'N/A'}": r['ID_Lead'] for _, r in all_leads.iterrows()}
+            options = {f"#{r['ID_Lead']} - {r.get('Razao_Social') or 'N/A'}": r['ID_Lead'] for _, r in all_leads_v.iterrows()}
             sels = st.multiselect("Selecione os leads:", list(options.keys()))
             c_del1, c_del2 = st.columns(2)
             if c_del1.button("CONFIRMAR EXCLUSÃO", type="primary", use_container_width=True):
@@ -287,7 +286,7 @@ def display():
     if st.session_state['show_create_lead_modal']: _display_create_lead_form()
     if st.session_state.get('show_fullscreen_details'): _display_lead_details_modal(st.session_state['selected_lead_id'])
 
-    # Dados e Filtragem (novamente para garantir dados frescos após exclusão)
+    # Dados e Filtragem
     all_leads = repository.get_detailed_leads()
     if search_term:
         term = search_term.lower()
