@@ -18,7 +18,7 @@ SCOPES = [
 
 @st.cache_resource(show_spinner="Conectando ao Google...")
 def _get_drive_service(force_new_auth=False):
-    """Autentica na API do Google Drive usando o fluxo de redirecionamento do Streamlit."""
+    """Autentica na API do Google Drive usando o fluxo de redirecionamento."""
     if force_new_auth and os.path.exists('token.json'):
         os.remove('token.json')
 
@@ -50,30 +50,37 @@ def _get_drive_service(force_new_auth=False):
         st.error("❌ Credenciais do Google não encontradas.")
         return None
 
-    # DETECÇÃO AUTOMÁTICA DA URL (Resolve o erro 404/Not Found)
-    # Pegamos a URL base onde o usuário está acessando agora
+    # A URL DEVE SER EXATAMENTE A DO SEU APP
     redirect_uri = "https://gestor-ideal.streamlit.app"
     
     flow = Flow.from_client_config(client_config, scopes=SCOPES, redirect_uri=redirect_uri)
 
+    # Captura o código da URL (o Google envia como ?code=...)
     auth_code = st.query_params.get("code")
     
     if auth_code:
         try:
+            # Se o código existe, gera o token
             flow.fetch_token(code=auth_code)
             creds = flow.credentials
             with open('token.json', 'w') as token:
                 token.write(creds.to_json())
+            
+            # Limpa o código da URL e reinicia para entrar no modo logado
             st.query_params.clear()
             st.rerun()
         except Exception as e:
-            st.error(f"Erro ao processar código: {e}")
+            st.error(f"Erro ao validar acesso: {e}")
+            st.info("Tente clicar no botão de autorizar novamente.")
             return None
     else:
+        # Se não há código, mostra o convite para autorizar
         auth_url, _ = flow.authorization_url(prompt='consent', access_type='offline')
-        st.info("🔒 Autorização necessária.")
-        # Usamos o link_button que abre em uma nova aba para evitar perder o contexto do app
-        st.link_button("🔗 CLIQUE AQUI PARA AUTORIZAR", auth_url, use_container_width=True)
+        
+        st.info("🔒 O Gestor Ideal precisa de acesso ao Google Drive e Gmail.")
+        # O link_button abre em NOVA ABA. O redirecionamento voltará para essa nova aba.
+        st.link_button("🔗 CLIQUE AQUI PARA CONECTAR", auth_url, use_container_width=True)
+        st.warning("⚠️ Uma nova aba será aberta. Após autorizar, o sistema carregará nela.")
         st.stop()
 
     return None
@@ -89,14 +96,13 @@ def check_drive_connection():
 def find_or_create_folder(folder_name, parent_folder_id):
     service = _get_drive_service()
     if not service: return None
-    query = f"name='{folder_name}' and mimeType='application/vnd.google-apps.folder' and '{parent_folder_id}' in parents and trashed=false"
     try:
+        query = f"name='{folder_name}' and mimeType='application/vnd.google-apps.folder' and '{parent_folder_id}' in parents and trashed=false"
         response = service.files().list(q=query, spaces='drive', fields='files(id, name)').execute()
         files = response.get('files', [])
         if files: return files[0].get('id')
-        folder = service.files().create(body={'name': folder_name, 'mimeType': 'application/vnd.google-apps.folder', 'parents': [parent_folder_id]}, fields='id').execute()
-        return folder.get('id')
-    except Exception as e: return None
+        return service.files().create(body={'name': folder_name, 'mimeType': 'application/vnd.google-apps.folder', 'parents': [parent_folder_id]}, fields='id').execute().get('id')
+    except Exception: return None
 
 def get_date_folder_structure(root_id):
     now = datetime.now()
