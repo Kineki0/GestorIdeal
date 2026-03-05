@@ -3,9 +3,9 @@ import streamlit as st
 import os
 import io
 import json
+import requests
 from datetime import datetime
 from google.oauth2.credentials import Credentials
-from google_auth_oauthlib.flow import Flow
 from google.auth.transport.requests import Request
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseUpload
@@ -34,7 +34,7 @@ def _get_credentials_file():
     return None
 
 def _get_drive_service(force_new_auth=False):
-    """Gerencia a conexão Google usando fluxo de redirecionamento automático (Polido)."""
+    """Gerencia a conexão Google usando fluxo HTTP Direto (Mais estável para nuvem)."""
     if force_new_auth and os.path.exists('token.json'):
         os.remove('token.json')
         st.cache_resource.clear()
@@ -42,65 +42,68 @@ def _get_drive_service(force_new_auth=False):
     creds = _get_credentials_file()
     if creds: return build('drive', 'v3', credentials=creds)
 
-    # --- FLUXO DE AUTORIZAÇÃO ---
+    # --- FLUXO DE AUTORIZAÇÃO DIRETO ---
     client_config = None
     if "GCP_CLIENT_SECRETS" in st.secrets:
-        client_config = json.loads(st.secrets["GCP_CLIENT_SECRETS"])
+        client_config = json.loads(st.secrets["GCP_CLIENT_SECRETS"]).get('web')
     elif os.path.exists('client_secrets.json'):
-        with open('client_secrets.json', 'r') as f: client_config = json.load(f)
+        with open('client_secrets.json', 'r') as f: 
+            client_config = json.load(f).get('web')
 
     if not client_config:
-        st.error("❌ Credenciais do Google não configuradas.")
+        st.error("❌ Credenciais do Google não configuradas corretamente nos Secrets.")
         return None
 
-    # Configura o Flow
-    flow = Flow.from_client_config(client_config, scopes=SCOPES, redirect_uri=get_current_url())
-    
-    # CAPTURA DO CÓDIGO DA URL
     auth_code = st.query_params.get("code")
     
     if auth_code:
-        # Recupera o verificador do session_state
-        verifier = st.session_state.get('oauth_verifier')
-        
-        if verifier:
+        # TROCA O CÓDIGO PELO TOKEN VIA HTTP (Bypassa o erro de verifier)
+        with st.spinner("🚀 Finalizando conexão..."):
             try:
-                flow.fetch_token(code=auth_code, code_verifier=verifier)
-                with open('token.json', 'w') as token:
-                    token.write(flow.credentials.to_json())
-                st.query_params.clear()
-                if 'oauth_verifier' in st.session_state: del st.session_state['oauth_verifier']
-                st.success("✅ Conectado com sucesso!")
-                st.rerun()
-            except Exception as e:
-                st.error(f"Falha na sincronização: {e}")
-                st.query_params.clear()
-        else:
-            # Fallback amigável: se perdeu o verifier, pede para o usuário um último clique
-            st.warning("👋 Quase lá! O Google já autorizou.")
-            if st.button("🚀 CLIQUE AQUI PARA FINALIZAR A CONEXÃO", type="primary", use_container_width=True):
-                # Tentativa sem verifier (algumas configs de Google Cloud permitem)
-                try:
-                    flow.fetch_token(code=auth_code)
-                    with open('token.json', 'w') as token:
-                        token.write(flow.credentials.to_json())
+                response = requests.post('https://oauth2.googleapis.com/token', data={
+                    'code': auth_code,
+                    'client_id': client_config['client_id'],
+                    'client_secret': client_config['client_secret'],
+                    'redirect_uri': get_current_url(),
+                    'grant_type': 'authorization_code'
+                })
+                
+                token_data = response.json()
+                if 'access_token' in token_data:
+                    # Cria objeto de credenciais e salva no token.json
+                    new_creds = Credentials(
+                        token=token_data['access_token'],
+                        refresh_token=token_data.get('refresh_token'),
+                        token_uri='https://oauth2.googleapis.com/token',
+                        client_id=client_config['client_id'],
+                        client_secret=client_config['client_secret'],
+                        scopes=SCOPES
+                    )
+                    with open('token.json', 'w') as f:
+                        f.write(new_creds.to_json())
+                    
                     st.query_params.clear()
-                    st.success("✅ Conectado!")
+                    st.success("✅ Conectado com sucesso!")
                     st.rerun()
-                except:
-                    st.error("Erro de segurança. Por favor, tente conectar novamente.")
+                else:
+                    st.error(f"Erro no Google: {token_data.get('error_description', 'Falha desconhecida')}")
                     st.query_params.clear()
-        st.stop()
+            except Exception as e:
+                st.error(f"Erro técnico: {e}")
+                st.query_params.clear()
     else:
-        # Tela inicial de conexão
-        st.subheader("👋 Conectar ao Google Drive")
-        st.info("Para salvar e carregar os dados com segurança, precisamos da sua autorização.")
+        # Mostra o botão de conexão amigável
+        auth_url = (
+            f"https://accounts.google.com/o/oauth2/v2/auth?"
+            f"client_id={client_config['client_id']}&"
+            f"redirect_uri={get_current_url()}&"
+            f"response_type=code&"
+            f"scope={' '.join(SCOPES)}&"
+            f"access_type=offline&prompt=consent"
+        )
         
-        auth_url, _ = flow.authorization_url(prompt='consent', access_type='offline')
-        
-        # Guarda o verifier ANTES de sair
-        st.session_state['oauth_verifier'] = flow.code_verifier
-        
+        st.subheader("👋 Conectar ao Google")
+        st.info("Para salvar seus dados, precisamos de uma rápida autorização na sua conta Google.")
         st.link_button("🔗 CLIQUE AQUI PARA AUTORIZAR", auth_url, use_container_width=True)
         st.stop()
     
