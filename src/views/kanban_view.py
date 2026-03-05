@@ -40,7 +40,7 @@ def _display_create_lead_form():
                     st.session_state['show_create_lead_modal'] = False
                     st.rerun()
 
-            if b2.form_submit_button("CANCELAR", use_container_width=True):
+            if btn_c2.form_submit_button("CANCELAR", use_container_width=True):
                 st.session_state['show_create_lead_modal'] = False
                 st.rerun()
 
