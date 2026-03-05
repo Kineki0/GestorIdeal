@@ -132,19 +132,27 @@ def _display_lead_details_modal(lead_id):
                     st.rerun()
             
             hist = repository.get_all('Historico')
-            hist = hist[hist['ID_Lead'].astype(int) == int(lead_id)].sort_values('Timestamp', ascending=False)
+            if not hist.empty:
+                # Filtragem segura convertendo para numérico e tratando erros (NaNs)
+                hist['ID_Lead_Num'] = pd.to_numeric(hist['ID_Lead'], errors='coerce')
+                hist = hist[hist['ID_Lead_Num'] == int(lead_id)].sort_values('Timestamp', ascending=False)
             
             c_com, c_sys = st.columns(2)
-            with c_com:
-                st.write("**Notas do Usuário**")
-                for _, r in hist[hist['Tipo'] == 'Comentário'].iterrows():
-                    st.caption(f"📅 {pd.to_datetime(r['Timestamp']).strftime('%d/%m %H:%M')} - {r['Usuario']}")
-                    st.info(r['Mensagem'])
-            with c_sys:
-                st.write("**Logs do Sistema**")
-                for _, r in hist[hist['Tipo'] == 'Ação'].iterrows():
-                    st.caption(f"⚙️ {pd.to_datetime(r['Timestamp']).strftime('%d/%m %H:%M')}")
-                    st.write(f"Modificou **{r['Campo']}**")
+            if not hist.empty:
+                with c_com:
+                    st.write("**Notas do Usuário**")
+                    comentarios = hist[hist['Tipo'] == 'Comentário']
+                    for _, r in comentarios.iterrows():
+                        st.caption(f"📅 {pd.to_datetime(r['Timestamp']).strftime('%d/%m %H:%M')} - {r['Usuario']}")
+                        st.info(r['Mensagem'])
+                with c_sys:
+                    st.write("**Logs do Sistema**")
+                    acoes = hist[hist['Tipo'] == 'Ação']
+                    for _, r in acoes.iterrows():
+                        st.caption(f"⚙️ {pd.to_datetime(r['Timestamp']).strftime('%d/%m %H:%M')}")
+                        st.write(f"Modificou **{r['Campo']}**")
+            else:
+                st.info("Nenhum histórico encontrado para este lead.")
 
 def display():
     st.markdown("""
@@ -190,21 +198,26 @@ def display():
             etapa_leads = all_leads[all_leads['Etapa_Atual'] == etapa]
             
             for _, p in etapa_leads.iterrows():
-                # Card clicável
-                with st.container():
-                    # Marcador de tempo
-                    dias = (datetime.now() - pd.to_datetime(p['Data_Entrada_Etapa'])).days if pd.notna(p.get('Data_Entrada_Etapa')) else 0
-                    
-                    st.markdown(f"""
-                        <div class="kanban-card">
-                            <span class="sla-tag">{dias}d</span>
-                            <div style="font-weight:bold; color:#004a99;">{p['Razao_Social']}</div>
-                            <div style="font-size:0.8rem; opacity:0.7;">👤 {p['Nome_Contato']}</div>
-                            <div style="font-size:0.8rem; margin-top:5px; font-style:italic;">💬 {p.get('Ultimo_Comentario', 'Sem notas')}</div>
-                        </div>
-                    """, unsafe_allow_html=True)
-                    
-                    if st.button(f"Abrir #{p['ID_Lead']}", key=f"open_{p['ID_Lead']}", use_container_width=True):
-                        st.session_state['selected_lead_id'] = p['ID_Lead']
-                        st.session_state['show_fullscreen_details'] = True
-                        st.rerun()
+                # Cálculo de dias na etapa
+                dias = (datetime.now() - pd.to_datetime(p['Data_Entrada_Etapa'])).days if pd.notna(p.get('Data_Entrada_Etapa')) else 0
+                
+                # Card como botão invisível sobreposto
+                if st.button(
+                    label=f"OPEN_CARD_{p['ID_Lead']}", 
+                    key=f"card_btn_{p['ID_Lead']}", 
+                    use_container_width=True,
+                    help=f"Clique para abrir #{p['ID_Lead']}"
+                ):
+                    st.session_state['selected_lead_id'] = p['ID_Lead']
+                    st.session_state['show_fullscreen_details'] = True
+                    st.rerun()
+
+                # Visual do Card (posicionado logo abaixo do botão invisível via CSS para dar efeito de clique)
+                st.markdown(f"""
+                    <div class="kanban-card" style="margin-top: -45px; pointer-events: none;">
+                        <span class="sla-tag">{dias}d</span>
+                        <div style="font-weight:bold; color:#004a99;">{p['Razao_Social']}</div>
+                        <div style="font-size:0.8rem; opacity:0.7;">👤 {p['Nome_Contato']}</div>
+                        <div style="font-size:0.8rem; margin-top:5px; font-style:italic;">💬 {p.get('Ultimo_Comentario', 'Sem notas')}</div>
+                    </div>
+                """, unsafe_allow_html=True)
