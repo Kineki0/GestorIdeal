@@ -16,9 +16,6 @@ SCOPES = [
     'https://www.googleapis.com/auth/gmail.send'
 ]
 
-def get_current_url():
-    return "https://gestorideal.streamlit.app"
-
 def _get_credentials_file():
     """Tenta carregar as credenciais do token.json local."""
     if os.path.exists('token.json'):
@@ -34,14 +31,14 @@ def _get_credentials_file():
     return None
 
 def _get_drive_service(force_new_auth=False):
-    """Gerencia a conexão Google usando fluxo de redirecionamento via URL (Estável)."""
+    """Gerencia a conexão Google usando fluxo de código manual (Infalível na nuvem)."""
     if force_new_auth and os.path.exists('token.json'):
         os.remove('token.json')
 
     creds = _get_credentials_file()
     if creds: return build('drive', 'v3', credentials=creds)
 
-    # --- FLUXO DE REDIRECIONAMENTO ---
+    # --- FLUXO MANUAL ---
     client_config = None
     if "GCP_CLIENT_SECRETS" in st.secrets:
         client_config = json.loads(st.secrets["GCP_CLIENT_SECRETS"])
@@ -49,40 +46,38 @@ def _get_drive_service(force_new_auth=False):
         with open('client_secrets.json', 'r') as f: client_config = json.load(f)
 
     if not client_config:
-        st.error("❌ Credenciais do Google não encontradas.")
+        st.error("❌ Credenciais do Google não encontradas nos Secrets.")
         return None
 
-    # Configura o Flow
-    flow = Flow.from_client_config(client_config, scopes=SCOPES, redirect_uri=get_current_url())
+    # Usamos o redirecionamento para o localhost como sinal de fluxo manual
+    flow = Flow.from_client_config(client_config, scopes=SCOPES, redirect_uri='http://localhost')
     
-    auth_code = st.query_params.get("code")
+    auth_url, _ = flow.authorization_url(prompt='consent', access_type='offline')
     
-    if auth_code:
-        try:
-            # Captura o token usando o código devolvido pelo Google
-            # Usamos o fluxo de 'servidor' que é mais resiliente na nuvem
-            flow.fetch_token(code=auth_code)
-            creds = flow.credentials
-            with open('token.json', 'w') as token:
-                token.write(creds.to_json())
-            
-            st.query_params.clear()
-            st.success("✅ Conectado com sucesso! Atualizando sistema...")
-            st.rerun()
-        except Exception as e:
-            st.error(f"Erro na finalização: {e}")
-            st.info("Por favor, clique no botão de autorizar novamente.")
-            st.query_params.clear()
-            return None
-    else:
-        # Gera URL de autorização sem PKCE para evitar o erro de 'verifier'
-        auth_url, _ = flow.authorization_url(prompt='consent', access_type='offline', include_granted_scopes='true')
-        
-        st.info("🔒 É necessário conectar sua conta Google.")
-        # Botão abre em nova aba
-        st.link_button("🔗 CLIQUE AQUI PARA CONECTAR", auth_url, use_container_width=True)
-        st.stop()
+    st.subheader("🔗 Conectar ao Google Drive")
+    st.info("O sistema precisa de autorização para salvar seus dados.")
     
+    st.markdown(f"1. [CLIQUE AQUI para abrir a página de autorização]({auth_url})")
+    st.markdown("2. Faça o login e clique em **Continuar/Permitir**.")
+    st.markdown("3. Você será enviado para uma página que 'não carrega' ou dá erro. **NÃO SE PREOCUPE!**")
+    st.markdown("4. Vá na barra de endereços do seu navegador, procure por **code=...** e copie tudo o que vem depois do igual até o próximo símbolo de &.")
+    
+    auth_code = st.text_input("5. Cole o código de autorização aqui:")
+    
+    if st.button("FINALIZAR CONEXÃO", type="primary", use_container_width=True):
+        if auth_code:
+            try:
+                flow.fetch_token(code=auth_code)
+                with open('token.json', 'w') as token:
+                    token.write(flow.credentials.to_json())
+                st.success("✅ Conectado com sucesso! Recarregando...")
+                st.rerun()
+            except Exception as e:
+                st.error(f"Código inválido. Por favor, tente novamente. ({e})")
+        else:
+            st.warning("Insira o código gerado pelo Google.")
+    
+    st.stop()
     return None
 
 def check_drive_connection():
