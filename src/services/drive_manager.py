@@ -17,31 +17,37 @@ SCOPES = [
 ]
 
 def get_current_url():
-    """Retorna a URL correta do app conforme informado pelo usuário."""
     return "https://gestorideal.streamlit.app"
 
-@st.cache_resource(show_spinner="Conectando ao Google...")
-def _get_drive_service(force_new_auth=False):
-    if force_new_auth and os.path.exists('token.json'):
-        os.remove('token.json')
-
-    creds = None
+@st.cache_resource(show_spinner="Verificando conexão...")
+def _get_credentials():
+    """Busca credenciais existentes ou tenta renovar sem usar widgets."""
     if os.path.exists('token.json'):
         creds = Credentials.from_authorized_user_file('token.json', SCOPES)
+        if creds and creds.valid:
+            return creds
+        if creds and creds.expired and creds.refresh_token:
+            try:
+                creds.refresh(Request())
+                with open('token.json', 'w') as token:
+                    token.write(creds.to_json())
+                return creds
+            except Exception:
+                if os.path.exists('token.json'): os.remove('token.json')
+    return None
+
+def _get_drive_service(force_new_auth=False):
+    """Retorna o serviço do Drive, gerenciando a interface de login fora do cache."""
+    if force_new_auth:
+        if os.path.exists('token.json'): os.remove('token.json')
+        st.cache_resource.clear()
+
+    creds = _get_credentials()
     
-    if creds and creds.valid:
+    if creds:
         return build('drive', 'v3', credentials=creds)
 
-    if creds and creds.expired and creds.refresh_token:
-        try:
-            creds.refresh(Request())
-            with open('token.json', 'w') as token:
-                token.write(creds.to_json())
-            return build('drive', 'v3', credentials=creds)
-        except Exception:
-            if os.path.exists('token.json'): os.remove('token.json')
-
-    # --- FLUXO DE AUTORIZAÇÃO ---
+    # --- FLUXO DE AUTORIZAÇÃO VISUAL (Fora do cache) ---
     client_config = None
     if "GCP_CLIENT_SECRETS" in st.secrets:
         client_config = json.loads(st.secrets["GCP_CLIENT_SECRETS"])
@@ -53,19 +59,14 @@ def _get_drive_service(force_new_auth=False):
         st.error("❌ Credenciais do Google não encontradas.")
         return None
 
-    # URL CORRIGIDA (SEM O TRAÇO)
-    redirect_uri = get_current_url()
-    
-    flow = Flow.from_client_config(client_config, scopes=SCOPES, redirect_uri=redirect_uri)
-
+    flow = Flow.from_client_config(client_config, scopes=SCOPES, redirect_uri=get_current_url())
     auth_code = st.query_params.get("code")
     
     if auth_code:
         try:
             flow.fetch_token(code=auth_code)
-            creds = flow.credentials
             with open('token.json', 'w') as token:
-                token.write(creds.to_json())
+                token.write(flow.credentials.to_json())
             st.query_params.clear()
             st.rerun()
         except Exception as e:
@@ -75,19 +76,15 @@ def _get_drive_service(force_new_auth=False):
         auth_url, _ = flow.authorization_url(prompt='consent', access_type='offline')
         st.info("🔒 Conexão necessária com o Google.")
         if st.button("🔗 CLIQUE AQUI PARA CONECTAR", use_container_width=True):
-            # Redirecionamento limpo na mesma aba
             st.markdown(f'<meta http-equiv="refresh" content="0; url={auth_url}">', unsafe_allow_html=True)
             st.stop()
         st.stop()
-
     return None
 
 def check_drive_connection():
     try:
-        if os.path.exists('token.json'):
-            creds = Credentials.from_authorized_user_file('token.json', SCOPES)
-            return creds and creds.valid
-        return False
+        creds = _get_credentials()
+        return creds is not None and creds.valid
     except Exception: return False
 
 def find_or_create_folder(folder_name, parent_folder_id):
