@@ -25,6 +25,10 @@ def main():
     # --- Se o usuário está logado, exibe a aplicação principal ---
     user = auth_manager.get_user()
     
+    # Verifica conexão com o Google para habilitar sincronização
+    from services import drive_manager
+    st.session_state.google_authorized = drive_manager.check_drive_connection()
+    
     # --- Configuração de Salvamento Automático ---
     if 'last_auto_save' not in st.session_state:
         st.session_state.last_auto_save = time.time()

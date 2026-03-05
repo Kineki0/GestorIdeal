@@ -1,6 +1,7 @@
 # repository_excel.py
 import pandas as pd
 import os
+import io
 import streamlit as st
 import openpyxl
 import config
@@ -8,20 +9,80 @@ from datetime import datetime, timedelta
 from config import ETAPAS_KANBAN as DEFAULT_ETAPAS
 import utils
 import secrets
+from googleapiclient.http import MediaIoBaseDownload
 
 # Lock to prevent race conditions when writing to Excel
 from threading import Lock
 excel_lock = Lock()
 
-# --- Funções de Leitura e Escrita (Otimizadas com Session State) ---
+# --- Funções de Leitura e Escrita (Sincronizadas com Google Drive) ---
 
-@st.cache_data(ttl=300) # Cache para a leitura inicial do arquivo
+def _sync_from_drive():
+    """Baixa o database.xlsx do Google Drive se ele for mais recente ou se o local não existir."""
+    from services import drive_manager
+    try:
+        root_id = st.secrets["DRIVE_ROOT_FOLDER_ID"]
+        # Procura pelo arquivo no Drive
+        service = drive_manager._get_drive_service()
+        if not service: return
+        
+        query = f"name='database.xlsx' and '{root_id}' in parents and trashed=false"
+        results = service.files().list(q=query, fields="files(id, modifiedTime)").execute()
+        files = results.get('files', [])
+        
+        if files:
+            file_id = files[0]['id']
+            request = service.files().get_media(fileId=file_id)
+            fh = io.BytesIO()
+            downloader = MediaIoBaseDownload(fh, request)
+            done = False
+            while done is False:
+                status, done = downloader.next_chunk()
+            
+            with open(config.DATABASE_PATH, 'wb') as f:
+                f.write(fh.getvalue())
+            # st.info("🔄 Banco de dados sincronizado do Google Drive.")
+    except Exception as e:
+        print(f"Erro ao sincronizar do Drive: {e}")
+
+def _sync_to_drive():
+    """Envia o database.xlsx local para o Google Drive."""
+    from services import drive_manager
+    try:
+        root_id = st.secrets["DRIVE_ROOT_FOLDER_ID"]
+        service = drive_manager._get_drive_service()
+        if not service: return
+        
+        # Procura se o arquivo já existe no Drive para atualizar ou criar
+        query = f"name='database.xlsx' and '{root_id}' in parents and trashed=false"
+        results = service.files().list(q=query, fields="files(id)").execute()
+        files = results.get('files', [])
+        
+        with open(config.DATABASE_PATH, 'rb') as f:
+            file_object = io.BytesIO(f.read())
+            # Gambiarra para simular o objeto de arquivo do Streamlit que o update_file espera
+            class MockFile:
+                def __init__(self, content): self.content = content
+                def getvalue(self): return self.content
+            
+            mock = MockFile(file_object.getvalue())
+            
+            if files:
+                drive_manager.update_file(files[0]['id'], mock)
+            else:
+                drive_manager.upload_file(mock, "database.xlsx", root_id)
+    except Exception as e:
+        print(f"Erro ao sincronizar para o Drive: {e}")
+
+@st.cache_data(ttl=300)
 def _load_database_from_file():
-    """
-    Carrega o arquivo Excel do disco. Esta é a operação lenta que queremos minimizar.
-    Retorna um dicionário de DataFrames.
-    """
+    """Carrega o Excel, tentando sincronizar com o Drive primeiro."""
+    # Tenta baixar a versão mais recente do Drive antes de ler
+    if 'google_authorized' in st.session_state and st.session_state.google_authorized:
+        _sync_from_drive()
+
     if not os.path.exists(config.DATABASE_PATH):
+        # ... (Estrutura inicial mantida igual)
         # Estrutura inicial se o arquivo não existir
         dfs = {
             'Clientes': pd.DataFrame({'ID_Cliente': [], 'Nome_Cliente': [], 'Ativo': []}),
@@ -103,7 +164,7 @@ def get_session_dfs():
 
 def commit_to_file():
     """
-    Salva o dicionário de DataFrames do session_state para o arquivo Excel.
+    Salva o dicionário de DataFrames do session_state para o arquivo Excel e sincroniza com o Drive.
     """
     dfs_to_save = get_session_dfs()
     try:
@@ -111,8 +172,13 @@ def commit_to_file():
             with pd.ExcelWriter(config.DATABASE_PATH, engine='openpyxl') as writer:
                 for sheet_name, df in dfs_to_save.items():
                     df.to_excel(writer, sheet_name=sheet_name, index=False)
+        
+        # Sincroniza para o Google Drive se estiver autorizado
+        if st.session_state.get('google_authorized', False):
+            _sync_to_drive()
+            
         st.cache_data.clear() # Limpa o cache de leitura após a escrita
-        st.toast("Alterações salvas com sucesso no banco de dados!")
+        st.toast("💾 Alterações salvas no banco de dados e no Drive!", icon="✅")
     except Exception as e:
         st.error(f"Falha ao salvar os dados no arquivo. Erro: {e}")
 

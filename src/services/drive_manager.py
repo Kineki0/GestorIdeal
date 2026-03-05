@@ -20,8 +20,8 @@ def get_current_url():
     return "https://gestorideal.streamlit.app"
 
 @st.cache_resource(show_spinner="Verificando conexão...")
-def _get_credentials():
-    """Busca credenciais sem usar widgets do Streamlit."""
+def _get_credentials_from_file():
+    """Tenta carregar as credenciais do arquivo sem widgets."""
     if os.path.exists('token.json'):
         try:
             creds = Credentials.from_authorized_user_file('token.json', SCOPES)
@@ -37,16 +37,15 @@ def _get_credentials():
     return None
 
 def _get_drive_service(force_new_auth=False):
-    """Retorna o serviço do Drive, gerenciando a autorização se necessário."""
     if force_new_auth:
         if os.path.exists('token.json'): os.remove('token.json')
         st.cache_resource.clear()
 
-    creds = _get_credentials()
+    creds = _get_credentials_from_file()
     if creds:
         return build('drive', 'v3', credentials=creds)
 
-    # --- FLUXO DE AUTORIZAÇÃO (Callback) ---
+    # --- FLUXO DE AUTORIZAÇÃO ROBUSTO PARA NUVEM ---
     client_config = None
     if "GCP_CLIENT_SECRETS" in st.secrets:
         client_config = json.loads(st.secrets["GCP_CLIENT_SECRETS"])
@@ -58,33 +57,46 @@ def _get_drive_service(force_new_auth=False):
         st.error("❌ Credenciais do Google não encontradas.")
         return None
 
+    # Inicializa o Flow com redirect_uri fixo
     flow = Flow.from_client_config(client_config, scopes=SCOPES, redirect_uri=get_current_url())
     
-    # Captura o código da URL se o Google já redirecionou de volta
+    # Captura o código da URL
     auth_code = st.query_params.get("code")
+    
     if auth_code:
         try:
-            flow.fetch_token(code=auth_code)
-            with open('token.json', 'w') as token:
-                token.write(flow.credentials.to_json())
-            st.query_params.clear()
-            st.rerun()
+            # Recupera o estado para evitar o erro 'Missing code verifier'
+            if 'oauth_state' in st.session_state:
+                flow.fetch_token(code=auth_code)
+                creds = flow.credentials
+                with open('token.json', 'w') as token:
+                    token.write(creds.to_json())
+                st.query_params.clear()
+                st.success("✅ Conectado com sucesso! Recarregando...")
+                st.rerun()
+            else:
+                # Se perdeu o estado, tenta forçar um novo início limpo
+                st.warning("🔄 Sessão expirada. Por favor, tente conectar novamente.")
+                st.query_params.clear()
+                st.stop()
         except Exception as e:
-            st.error(f"Erro ao processar autorização: {e}")
+            st.error(f"Erro na autorização: {e}")
+            st.query_params.clear()
             return None
     else:
-        # Exibe interface de login se não houver token nem código na URL
-        auth_url, _ = flow.authorization_url(prompt='consent', access_type='offline')
-        st.info("🔒 O acesso ao Google Drive/Gmail expirou ou não foi autorizado.")
+        # Gera URL de autorização e salva o estado
+        auth_url, state = flow.authorization_url(prompt='consent', access_type='offline')
+        st.session_state['oauth_state'] = state
         
-        # Redirecionamento via link_button (Mais estável que o meta-refresh)
+        st.info("🔒 É necessário conectar sua conta Google.")
+        # Usamos link_button para garantir a melhor compatibilidade
         st.link_button("🔗 CLIQUE AQUI PARA CONECTAR AO GOOGLE", auth_url, use_container_width=True)
-        st.warning("⚠️ Uma nova aba será aberta. Após autorizar, o sistema carregará nela e você poderá fechar esta aba.")
+        st.warning("⚠️ Uma nova aba será aberta. Após autorizar, o sistema carregará nela.")
         st.stop()
     return None
 
 def check_drive_connection():
-    creds = _get_credentials()
+    creds = _get_credentials_from_file()
     return creds is not None and creds.valid
 
 def find_or_create_folder(folder_name, parent_folder_id):
