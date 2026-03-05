@@ -11,26 +11,32 @@ def _display_create_lead_form():
     if not st.session_state.get('show_create_lead_modal', False):
         return
     etapa = st.session_state.get('create_lead_etapa', "")
+    
     with st.container(border=True):
         st.subheader(f"🚀 Novo Lead - {etapa}")
-        with st.form("form_create_final_v21", clear_on_submit=True):
-            c1, c2 = st.columns(2)
-            with c1:
+        with st.form("form_create_final_v22", clear_on_submit=True):
+            col_inputs_1, col_inputs_2 = st.columns(2)
+            with col_inputs_1:
                 razao = st.text_input("Razão Social")
                 fantasia = st.text_input("Nome Fantasia")
                 contato = st.text_input("Contato")
                 email = st.text_input("Email")
-            with c2:
+            with col_inputs_2:
                 cnpj = st.text_input("CNPJ")
                 prioridade = st.selectbox("Prioridade", ["Baixa", "Média", "Alta"], index=1)
                 prazo = st.date_input("Prazo", value=None)
                 desc = st.text_area("Observações")
             
-            btn_c1, btn_c2 = st.columns(2)
-            if btn_c1.form_submit_button("✅ SALVAR", use_container_width=True, type="primary"):
-                # Validação de campos obrigatórios
+            # Botões de ação do formulário
+            col_btns = st.columns(2)
+            with col_btns[0]:
+                submit_btn = st.form_submit_button("✅ SALVAR", use_container_width=True, type="primary")
+            with col_btns[1]:
+                cancel_btn = st.form_submit_button("CANCELAR", use_container_width=True)
+
+            if submit_btn:
                 if not razao or not contato or not email:
-                    st.error("⚠️ Por favor, preencha os campos obrigatórios: Razão Social, Contato e Email.")
+                    st.error("⚠️ Preencha os campos obrigatórios: Razão Social, Contato e Email.")
                 else:
                     repository.create_lead({
                         'Descricao': desc, 'Nome_Contato': contato, 'CNPJ': cnpj, 
@@ -40,7 +46,7 @@ def _display_create_lead_form():
                     st.session_state['show_create_lead_modal'] = False
                     st.rerun()
 
-            if btn_c2.form_submit_button("CANCELAR", use_container_width=True):
+            if cancel_btn:
                 st.session_state['show_create_lead_modal'] = False
                 st.rerun()
 
@@ -199,24 +205,7 @@ def display():
             .prio-alta { border-left: 6px solid #ff4b4b; }
             .prio-media { border-left: 6px solid #ffa500; }
             .prio-baixa { border-left: 6px solid #28a745; }
-
-            /* Estilo para Checkboxes, Toggles e Radio Buttons (Azul Corporativo) */
-            div[data-baseweb="checkbox"] div {
-                background-color: #004a99 !important;
-                border-color: #004a99 !important;
-            }
-            div[role="checkbox"][aria-checked="true"] {
-                background-color: #004a99 !important;
-            }
-            /* Cor do Switch/Toggle */
-            div[data-testid="stCheckbox"] > label > div:first-child > div {
-                background-color: #004a99 !important;
-            }
-            /* Overrides específicos de classes Streamlit para remover o vermelho */
-            .st-d9 {
-                background-color: #004a99 !important;
-            }
-            /* Override para botões primários (estilo emotion cache) */
+            .st-d9 { background-color: #004a99 !important; }
             .st-emotion-cache-1krtkoa {
                 background-color: #004a99 !important;
                 color: white !important;

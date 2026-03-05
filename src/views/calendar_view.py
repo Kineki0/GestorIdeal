@@ -17,16 +17,25 @@ def display():
         st.warning("Não há leads para exibir.")
         return
 
-    leads_ativos = leads_df[~leads_df['Etapa_Atual'].isin(['Concluído', 'Cancelado'])].copy()
+    # Garantir que a coluna Prazo seja datetime e remover nulos para a comparação
+    leads_df['Prazo'] = pd.to_datetime(leads_df['Prazo'], errors='coerce')
+    leads_ativos = leads_df[
+        (~leads_df['Etapa_Atual'].isin(['Concluído', 'Cancelado'])) & 
+        (leads_df['Prazo'].notnull())
+    ].copy()
+    
     leads_ativos.sort_values(by='Prazo', inplace=True)
 
     # --- Seletor de Data ---
-    selected_date = st.date_input("Selecione uma data para ver os prazos", value=datetime.now())
+    # st.date_input retorna datetime.date se inicializado com datetime.date
+    hoje_date = datetime.now().date()
+    selected_date = st.date_input("Selecione uma data para ver os prazos", value=hoje_date)
     dias_para_visualizar = st.slider("Visualizar quantos dias a partir da data selecionada?", 1, 30, 7)
     
     data_inicio = selected_date
     data_fim = selected_date + timedelta(days=dias_para_visualizar - 1)
 
+    # Filtragem segura comparando objetos date
     leads_filtrados = leads_ativos[
         (leads_ativos['Prazo'].dt.date >= data_inicio) & 
         (leads_ativos['Prazo'].dt.date <= data_fim)
