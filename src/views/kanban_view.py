@@ -11,7 +11,7 @@ def _display_create_lead_form():
     if not st.session_state.get('show_create_lead_modal', False): return
     with st.container(border=True):
         st.subheader("🚀 Novo Lead")
-        with st.form("form_create_lead_new_v2", clear_on_submit=True):
+        with st.form("form_create_lead_new_v3", clear_on_submit=True):
             c1, c2 = st.columns(2)
             razao = c1.text_input("Razão Social *")
             telefone = c1.text_input("Telefone *")
@@ -33,13 +33,14 @@ def _display_create_lead_form():
 def _display_lead_details_modal(lead_id):
     if not st.session_state.get('show_fullscreen_details', False): return
     all_leads = repository.get_detailed_leads()
-    p = all_leads[all_leads['ID_Lead'].astype(int) == int(lead_id)].iloc[0]
+    p_filter = all_leads[all_leads['ID_Lead'].astype(int) == int(lead_id)]
+    if p_filter.empty: return
+    p = p_filter.iloc[0]
     
     with st.container(border=True):
         h1, h2 = st.columns([9, 1])
         h1.subheader(f"📄 #{p['ID_Lead']} - {p['Razao_Social']}")
         
-        # Ficha PDF
         pdf_bytes = pdf_manager.generate_lead_pdf(p)
         st.download_button("📄 Baixar Ficha PDF", pdf_bytes, f"Lead_{p['ID_Lead']}.pdf", "application/pdf")
 
@@ -119,32 +120,39 @@ def _display_lead_details_modal(lead_id):
                     repository.add_comment_to_lead_history(lead_id, auth_manager.get_user(), msg)
                     st.rerun()
             hist = repository.get_all('Historico')
-            hist = hist[hist['ID_Lead'].astype(int) == int(lead_id)].sort_values('Timestamp', ascending=False)
+            if not hist.empty:
+                hist['ID_Lead_Clean'] = pd.to_numeric(hist['ID_Lead'], errors='coerce')
+                hist = hist[hist['ID_Lead_Clean'] == int(lead_id)].sort_values('Timestamp', ascending=False)
+            
             c_com, c_sys = st.columns(2)
-            with c_com:
-                st.write("**Notas do Usuário**")
-                for _, r in hist[hist['Tipo'] == 'Comentário'].iterrows():
-                    st.info(f"👤 {r['Usuario']} em {pd.to_datetime(r['Timestamp']).strftime('%d/%m %H:%M')}\n\n{r['Mensagem']}")
-            with c_sys:
-                st.write("**Logs do Sistema**")
-                for _, r in hist[hist['Tipo'] == 'Ação'].iterrows():
-                    st.caption(f"⚙️ {pd.to_datetime(r['Timestamp']).strftime('%d/%m %H:%M')} - Alterou {r['Campo']}")
+            if not hist.empty:
+                with c_com:
+                    st.write("**Notas do Usuário**")
+                    for _, r in hist[hist['Tipo'] == 'Comentário'].iterrows():
+                        st.info(f"👤 {r['Usuario']} em {pd.to_datetime(r['Timestamp']).strftime('%d/%m %H:%M')}\n\n{r['Mensagem']}")
+                with c_sys:
+                    st.write("**Logs do Sistema**")
+                    for _, r in hist[hist['Tipo'] == 'Ação'].iterrows():
+                        st.caption(f"⚙️ {pd.to_datetime(r['Timestamp']).strftime('%d/%m %H:%M')} - Alterou {r['Campo']}")
 
 def display():
     st.markdown("""
         <style>
-            /* ESTILO CARD-BOTÃO */
+            /* ESTILO CARD-BOTÃO COM QUEBRA DE LINHA */
             .stButton > button[key^="card_btn_"] {
                 height: auto !important;
                 padding: 15px !important;
                 text-align: left !important;
                 display: block !important;
-                white-space: pre-wrap !important;
                 border-radius: 12px !important;
                 border: 1px solid rgba(0,74,153,0.2) !important;
                 background-color: var(--secondary-background-color) !important;
                 transition: 0.3s !important;
-                line-height: 1.4 !important;
+                line-height: 1.5 !important;
+            }
+            .stButton > button[key^="card_btn_"] div p {
+                white-space: pre-wrap !important; /* FORÇA A QUEBRA DE LINHA */
+                word-wrap: break-word !important;
             }
             .stButton > button[key^="card_btn_"]:hover {
                 border-color: #004a99 !important;
@@ -152,14 +160,12 @@ def display():
                 transform: translateY(-2px) !important;
             }
             
-            /* DIVISÓRIAS DE COLUNA */
             [data-testid="column"] {
                 border-right: 1px solid rgba(0,74,153,0.1) !important;
                 padding: 10px 15px !important;
                 min-width: 380px !important;
             }
             
-            /* TÍTULOS */
             h3 { color: #004a99 !important; border-bottom: 2px solid #004a99; padding-bottom: 5px; margin-bottom: 20px !important; }
         </style>
     """, unsafe_allow_html=True)
@@ -184,13 +190,12 @@ def display():
             etapa_leads = all_leads[all_leads['Etapa_Atual'] == etapa]
             
             for _, p in etapa_leads.iterrows():
-                # Preparação dos dados do card
                 dias = (datetime.now() - pd.to_datetime(p['Data_Entrada_Etapa'])).days if pd.notna(p.get('Data_Entrada_Etapa')) else 0
                 criado = pd.to_datetime(p['Data_Criacao']).strftime('%d/%m/%y') if pd.notna(p['Data_Criacao']) else "N/A"
                 retorno = pd.to_datetime(p['Prazo']).strftime('%d/%m/%y') if pd.notna(p['Prazo']) else "Sem data"
                 
-                # Rótulo multiline para o botão
-                label = (
+                # Texto formatado com quebras de linha reais (\n)
+                label_text = (
                     f"🏢 {p['Razao_Social']}\n"
                     f"👤 {p['Nome_Contato']} ({dias}d na fase)\n"
                     f"📅 Criado: {criado} | ⏳ Retorno: {retorno}\n"
@@ -198,7 +203,19 @@ def display():
                     f"💬 {p.get('Ultimo_Comentario', 'Sem notas')}"
                 )
                 
-                if st.button(label, key=f"card_btn_{p['ID_Lead']}", use_container_width=True):
-                    st.session_state['selected_lead_id'] = p['ID_Lead']
-                    st.session_state['show_fullscreen_details'] = True
-                    st.rerun()
+                # Container para o Card e o Botão de Nota Rápida
+                with st.container():
+                    # Card principal (Botão)
+                    if st.button(label_text, key=f"card_btn_{p['ID_Lead']}", use_container_width=True):
+                        st.session_state['selected_lead_id'] = p['ID_Lead']
+                        st.session_state['show_fullscreen_details'] = True
+                        st.rerun()
+                    
+                    # Botão de Nota Rápida (Abaixo do card)
+                    with st.popover("💬 Nota Rápida", use_container_width=True):
+                        quick_note = st.text_area("Escreva sua nota...", key=f"quick_note_area_{p['ID_Lead']}")
+                        if st.button("Salvar Nota", key=f"btn_save_quick_{p['ID_Lead']}", type="primary"):
+                            if quick_note:
+                                repository.add_comment_to_lead_history(p['ID_Lead'], auth_manager.get_user(), quick_note)
+                                st.success("Nota salva!")
+                                st.rerun()
