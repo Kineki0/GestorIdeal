@@ -88,6 +88,8 @@ def _load_database_from_file():
             'Leads': pd.DataFrame(columns=expected_lead_columns),
             'Historico': pd.DataFrame({'ID_Historico': [], 'ID_Lead': [], 'Timestamp': [], 'Usuario': [], 'Tipo': [], 'Campo': [], 'Antigo': [], 'Novo': [], 'Mensagem': []}),
             'Anexos': pd.DataFrame({'ID_Anexo': [], 'Tipo_Referencia': [], 'ID_Referencia': [], 'Nome_Arquivo': [], 'Link_Drive': [], 'Usuario_Envio': [], 'Data_Envio': []}),
+            'Logs': pd.DataFrame({'Timestamp': [], 'Nivel': [], 'Mensagem': []}),
+            'PasswordResetTokens': pd.DataFrame({'Token': [], 'Email': [], 'ExpiresAt': [], 'Used': []}),
             'KanbanConfig': pd.DataFrame({'ID_Etapa': [i+1 for i in range(len(DEFAULT_ETAPAS))], 'Nome_Etapa': DEFAULT_ETAPAS, 'Ordem': [i for i in range(len(DEFAULT_ETAPAS))]})
         }
         os.makedirs(os.path.dirname(config.DATABASE_PATH), exist_ok=True)
@@ -103,6 +105,17 @@ def _load_database_from_file():
             if 'Leads' in dfs:
                 for col in expected_lead_columns:
                     if col not in dfs['Leads'].columns: dfs['Leads'][col] = ""
+            
+            # Garantir existência de todas as abas
+            required_sheets = ['Usuarios', 'Leads', 'Historico', 'Anexos', 'Logs', 'PasswordResetTokens', 'KanbanConfig']
+            for sheet in required_sheets:
+                if sheet not in dfs:
+                    if sheet == 'Logs':
+                        dfs[sheet] = pd.DataFrame({'Timestamp': [], 'Nivel': [], 'Mensagem': []})
+                    elif sheet == 'PasswordResetTokens':
+                        dfs[sheet] = pd.DataFrame({'Token': [], 'Email': [], 'ExpiresAt': [], 'Used': []})
+                    else:
+                        dfs[sheet] = pd.DataFrame()
             return dfs
     except Exception: return None
 
@@ -115,6 +128,7 @@ def get_session_dfs():
     return st.session_state.db_dfs
 
 def commit_to_file():
+    """Salva localmente e sincroniza com o Google Drive."""
     dfs = get_session_dfs()
     try:
         with excel_lock:
@@ -213,6 +227,10 @@ def get_user_by_email(email):
     user = df[df['Email'].str.lower() == email.lower()]
     return user.to_dict('records')[0] if not user.empty else None
 
+def user_exists(email):
+    df = get_all('Usuarios')
+    return not df.empty and not df[df['Email'].str.lower() == email.lower()].empty
+
 def register_user(name, email, pwd, profile):
     dfs = get_session_dfs()
     df = dfs['Usuarios']
@@ -222,7 +240,74 @@ def register_user(name, email, pwd, profile):
     commit_to_file()
     return new_id
 
-# Funções simplificadas para evitar conflitos
+def log_system_event(mensagem, nivel="INFO"):
+    """Registra um evento de log no banco de dados Excel."""
+    dfs = get_session_dfs()
+    if 'Logs' not in dfs:
+        dfs['Logs'] = pd.DataFrame(columns=['Timestamp', 'Nivel', 'Mensagem'])
+    new_log = pd.DataFrame([{'Timestamp': datetime.now(), 'Nivel': nivel, 'Mensagem': mensagem}])
+    dfs['Logs'] = pd.concat([dfs['Logs'], new_log], ignore_index=True)
+    # Não chamamos commit aqui para evitar loop infinito se chamado em funções de commit
+
+def add_comment_to_lead_history(lead_id, user, comment):
+    dfs = get_session_dfs()
+    _add_history(dfs, lead_id, user['Nome'], "Comentário", "N/A", "N/A", "N/A", comment)
+    commit_to_file()
+    return True
+
+def create_anexo_record(tipo_referencia, id_referencia, nome_arquivo, tipo_arquivo, link_drive, usuario_envio, observacao):
+    dfs = get_session_dfs()
+    df = dfs['Anexos']
+    new_id = (df['ID_Anexo'].max() + 1) if not df.empty else 1
+    new_row = {
+        'ID_Anexo': new_id, 'Tipo_Referencia': tipo_referencia, 'ID_Referencia': id_referencia,
+        'Nome_Arquivo': nome_arquivo, 'Link_Drive': link_drive,
+        'Usuario_Envio': usuario_envio, 'Data_Envio': datetime.now()
+    }
+    dfs['Anexos'] = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
+    if tipo_referencia == "Lead":
+        _add_history(dfs, id_referencia, usuario_envio, "Ação", "Anexo", "N/A", nome_arquivo, f"Arquivo '{nome_arquivo}' anexado.")
+    commit_to_file()
+    return new_id
+
+def get_anexos_by_referencia(tipo, rid):
+    df = get_all('Anexos')
+    if df.empty: return pd.DataFrame()
+    return df[(df['Tipo_Referencia'] == tipo) & (df['ID_Referencia'] == rid)]
+
 def rename_kanban_stage(o, n): return False
 def remove_kanban_stage(n): return False
 def add_kanban_stage(n, o=0): return False
+
+def create_password_reset_token(email):
+    token = secrets.token_urlsafe(32)
+    dfs = get_session_dfs()
+    tokens_df = dfs.get('PasswordResetTokens', pd.DataFrame())
+    expires_at = datetime.now() + timedelta(hours=1)
+    new_token = pd.DataFrame([{'Token': token, 'Email': email, 'ExpiresAt': expires_at, 'Used': False}])
+    dfs['PasswordResetTokens'] = pd.concat([tokens_df, new_token], ignore_index=True)
+    commit_to_file()
+    return token
+
+def get_password_reset_token(token):
+    dfs = get_session_dfs()
+    tokens_df = dfs.get('PasswordResetTokens', pd.DataFrame())
+    if tokens_df.empty: return None
+    match = tokens_df[(tokens_df['Token'] == token) & (tokens_df['Used'] == False)]
+    return match.to_dict('records')[0] if not match.empty else None
+
+def update_user_password(email, pwd):
+    dfs = get_session_dfs()
+    df = dfs['Usuarios']
+    idx = df.index[df['Email'].str.lower() == email.lower()].tolist()
+    if not idx: return False
+    df.at[idx[0], 'Senha'] = pwd
+    commit_to_file()
+    return True
+
+def invalidate_password_reset_token(token):
+    dfs = get_session_dfs()
+    df = dfs['PasswordResetTokens']
+    df.loc[df['Token'] == token, 'Used'] = True
+    commit_to_file()
+    return True
