@@ -16,9 +16,12 @@ SCOPES = [
     'https://www.googleapis.com/auth/gmail.send'
 ]
 
+def get_current_url():
+    """Retorna a URL correta do app conforme informado pelo usuário."""
+    return "https://gestorideal.streamlit.app"
+
 @st.cache_resource(show_spinner="Conectando ao Google...")
 def _get_drive_service(force_new_auth=False):
-    """Autentica na API do Google Drive usando o fluxo de redirecionamento."""
     if force_new_auth and os.path.exists('token.json'):
         os.remove('token.json')
 
@@ -50,37 +53,31 @@ def _get_drive_service(force_new_auth=False):
         st.error("❌ Credenciais do Google não encontradas.")
         return None
 
-    # A URL DEVE SER EXATAMENTE A DO SEU APP
-    redirect_uri = "https://gestor-ideal.streamlit.app"
+    # URL CORRIGIDA (SEM O TRAÇO)
+    redirect_uri = get_current_url()
     
     flow = Flow.from_client_config(client_config, scopes=SCOPES, redirect_uri=redirect_uri)
 
-    # Captura o código da URL (o Google envia como ?code=...)
     auth_code = st.query_params.get("code")
     
     if auth_code:
         try:
-            # Se o código existe, gera o token
             flow.fetch_token(code=auth_code)
             creds = flow.credentials
             with open('token.json', 'w') as token:
                 token.write(creds.to_json())
-            
-            # Limpa o código da URL e reinicia para entrar no modo logado
             st.query_params.clear()
             st.rerun()
         except Exception as e:
-            st.error(f"Erro ao validar acesso: {e}")
-            st.info("Tente clicar no botão de autorizar novamente.")
+            st.error(f"Erro na validação: {e}")
             return None
     else:
-        # Se não há código, mostra o convite para autorizar
         auth_url, _ = flow.authorization_url(prompt='consent', access_type='offline')
-        
-        st.info("🔒 O Gestor Ideal precisa de acesso ao Google Drive e Gmail.")
-        # O link_button abre em NOVA ABA. O redirecionamento voltará para essa nova aba.
-        st.link_button("🔗 CLIQUE AQUI PARA CONECTAR", auth_url, use_container_width=True)
-        st.warning("⚠️ Uma nova aba será aberta. Após autorizar, o sistema carregará nela.")
+        st.info("🔒 Conexão necessária com o Google.")
+        if st.button("🔗 CLIQUE AQUI PARA CONECTAR", use_container_width=True):
+            # Redirecionamento limpo na mesma aba
+            st.markdown(f'<meta http-equiv="refresh" content="0; url={auth_url}">', unsafe_allow_html=True)
+            st.stop()
         st.stop()
 
     return None
