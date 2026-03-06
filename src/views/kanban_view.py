@@ -161,12 +161,31 @@ def _display_lead_details_modal(lead_id):
 def display():
     st.markdown("""
         <style>
-            /* Container das Colunas (Lanes) */
+            /* FORÇAR CONTAINER PRINCIPAL A PERMITIR SCROLL HORIZONTAL */
             [data-testid="stHorizontalBlock"] { 
+                display: flex !important;
+                flex-direction: row !important;
                 flex-wrap: nowrap !important; 
                 overflow-x: auto !important; 
-                gap: 1rem !important; 
-                padding: 10px 5px !important; 
+                gap: 1.5rem !important; 
+                padding: 20px 10px !important;
+                width: 100% !important;
+            }
+
+            /* Garantir que a barra de rolagem seja visível e estilizada */
+            [data-testid="stHorizontalBlock"]::-webkit-scrollbar {
+                height: 12px;
+            }
+            [data-testid="stHorizontalBlock"]::-webkit-scrollbar-track {
+                background: #f1f1f1;
+                border-radius: 10px;
+            }
+            [data-testid="stHorizontalBlock"]::-webkit-scrollbar-thumb {
+                background: #004a99;
+                border-radius: 10px;
+            }
+            [data-testid="stHorizontalBlock"]::-webkit-scrollbar-thumb:hover {
+                background: #003366;
             }
             
             /* Estilização da "Pista" (Lane) do Kanban */
@@ -175,7 +194,6 @@ def display():
                 border: 1px solid #e9ecef;
                 border-radius: 12px;
                 padding: 15px;
-                min-width: 400px;
                 height: 100%;
             }
 
@@ -183,46 +201,55 @@ def display():
             .lane-title {
                 color: #004a99;
                 font-weight: bold;
-                font-size: 1.2rem;
+                font-size: 1.3rem;
                 text-align: center;
-                border-bottom: 2px solid #004a99;
-                padding-bottom: 10px;
-                margin-bottom: 20px;
+                border-bottom: 3px solid #004a99;
+                padding-bottom: 12px;
+                margin-bottom: 25px;
                 text-transform: uppercase;
-                letter-spacing: 1px;
+                letter-spacing: 1.5px;
             }
 
             /* Card Styling */
             .stButton > button[key^="card_btn_"] { 
                 height: auto !important; 
-                padding: 15px !important; 
+                padding: 20px !important; 
                 text-align: left !important; 
                 display: block !important; 
-                border-radius: 10px !important; 
+                border-radius: 12px !important; 
                 border: 1px solid rgba(0,74,153,0.15) !important; 
                 background-color: white !important; 
-                transition: 0.2s !important; 
-                line-height: 1.4 !important;
-                margin-bottom: 10px !important;
-                box-shadow: 0 2px 4px rgba(0,0,0,0.05) !important;
+                transition: 0.2s cubic-bezier(0.4, 0, 0.2, 1) !important; 
+                line-height: 1.6 !important;
+                margin-bottom: 15px !important;
+                box-shadow: 0 4px 6px rgba(0,0,0,0.05) !important;
             }
             
             .stButton > button[key^="card_btn_"]:hover { 
                 border-color: #004a99 !important; 
-                box-shadow: 0 4px 12px rgba(0,74,153,0.1) !important; 
-                transform: translateY(-2px) !important; 
-                background-color: #f0f7ff !important;
+                box-shadow: 0 8px 15px rgba(0,74,153,0.12) !important; 
+                transform: translateY(-3px) !important; 
+                background-color: #f8fbff !important;
             }
 
             .stButton > button[key^="card_btn_"] div p { 
                 white-space: pre-wrap !important; 
                 word-wrap: break-word !important; 
-                font-size: 0.9rem !important;
+                font-size: 1rem !important;
+                color: #333 !important;
             }
             
-            /* Ajuste de largura mínima das colunas do Streamlit para o scroll horizontal */
+            /* LARGURA FIXA DAS COLUNAS PARA FORÇAR O SCROLL */
             [data-testid="column"] {
                 min-width: 1024px !important;
+                flex: 0 0 1024px !important;
+            }
+
+            /* Ajuste para evitar que o conteúdo principal do Streamlit limite a largura */
+            .main .block-container {
+                max-width: 100% !important;
+                padding-left: 2rem !important;
+                padding-right: 2rem !important;
             }
         </style>
     """, unsafe_allow_html=True)
