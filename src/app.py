@@ -2,8 +2,8 @@
 import streamlit as st
 import pandas as pd
 import time
-from services import auth_manager, assistant_manager
-from views import kanban_view, dashboard_view, calendar_view, admin_clientes_view, admin_servicos_view, admin_kanban_view, admin_jarvis_brain_view
+from services import auth_manager
+from views import kanban_view, dashboard_view, calendar_view, admin_clientes_view, admin_servicos_view, admin_kanban_view, admin_jarvis_brain_view, floating_assistant
 from data import repository_excel as repository
 
 # --- Configuração da Página ---
@@ -66,72 +66,11 @@ def main():
         st.divider()
         # O botão manual foi removido conforme solicitado, agora é automático.
             
-        # --- ASSISTENTE IDEAL ---
-        st.subheader("🤖 Assistente Ideal")
-        with st.expander("💬 Dúvida rápida?", expanded=False):
-            # Botões de atalho rápido
-            c1, c2 = st.columns(2)
-            if c1.button("❓ Ajuda", use_container_width=True):
-                st.session_state.last_jarvis_res = assistant_manager.ask_jarvis("ajuda")
-                st.rerun()
-            if c2.button("📖 Tutoriais", use_container_width=True):
-                st.session_state.last_jarvis_res = assistant_manager.ask_jarvis("tutorial")
-                st.rerun()
-            if st.button("⚠️ Por que o alerta amarelo?", use_container_width=True):
-                st.session_state.last_jarvis_res = assistant_manager.ask_jarvis("alerta amarelo")
-                st.rerun()
-            
-            st.divider()
-            
-            if "assistant_reset" not in st.session_state:
-                st.session_state.assistant_reset = 0
-            
-            # Form para permitir o ENTER
-            with st.form(key=f"ideal_form_{st.session_state.assistant_reset}", clear_on_submit=True):
-                user_q = st.text_input("Digite sua dúvida:")
-                submit_button = st.form_submit_button("🚀 PERGUNTAR", use_container_width=True)
-                
-                if submit_button and user_q:
-                    st.session_state.last_query = user_q
-                    st.session_state.last_jarvis_res = assistant_manager.ask_jarvis(user_q)
-                    st.session_state.assistant_reset += 1
-                    st.rerun()
-            
-            if "last_jarvis_res" in st.session_state:
-                st.info(st.session_state.last_jarvis_res)
-                
-                # MECANISMO DE FEEDBACK
-                st.write("Essa resposta ajudou?")
-                fb_col1, fb_col2, fb_col3 = st.columns([1, 1, 2])
-                
-                if fb_col1.button("👍 Sim", key="fb_yes"):
-                    st.toast("Obrigado! Fico feliz em ajudar.", icon="😊")
-                    del st.session_state.last_jarvis_res
-                    st.rerun()
-                
-                if fb_col2.button("👎 Não", key="fb_no"):
-                    st.session_state.show_suggestion_field = True
-                
-                if st.session_state.get("show_suggestion_field"):
-                    st.write("---")
-                    st.caption("Como eu deveria ter respondido?")
-                    suggestion = st.text_area("Sua sugestão de resposta:", key="sug_text")
-                    if st.button("Enviar Sugestão", use_container_width=True):
-                        if suggestion:
-                            repository.suggest_knowledge(st.session_state.get("last_query", "geral"), suggestion, user['Nome'])
-                            st.success("Obrigado! Minha equipe vai analisar sua sugestão.")
-                            time.sleep(2)
-                            del st.session_state.last_jarvis_res
-                            st.session_state.show_suggestion_field = False
-                            st.rerun()
-
-                if fb_col3.button("Limpar", type="secondary"):
-                    del st.session_state.last_jarvis_res
-                    if "show_suggestion_field" in st.session_state: del st.session_state.show_suggestion_field
-                    st.rerun()
-
         if st.button("Logout", type="primary", use_container_width=True):
             auth_manager.logout()
+
+    # --- ASSISTENTE IDEAL (FLUTUANTE) ---
+    floating_assistant.display_floating_assistant()
 
     # Roteamento de página
     if admin_page and admin_page != "Nenhum":
