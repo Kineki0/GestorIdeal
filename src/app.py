@@ -66,8 +66,8 @@ def main():
         st.divider()
         # O botão manual foi removido conforme solicitado, agora é automático.
             
-        # --- ASSISTENTE JARVIS ---
-        st.subheader("🤖 Assistente Jarvis")
+        # --- ASSISTENTE IDEAL ---
+        st.subheader("🤖 Assistente Ideal")
         with st.expander("💬 Dúvida rápida?", expanded=False):
             # Botões de atalho rápido
             c1, c2 = st.columns(2)
@@ -87,8 +87,8 @@ def main():
                 st.session_state.assistant_reset = 0
             
             # Form para permitir o ENTER
-            with st.form(key=f"jarvis_form_{st.session_state.assistant_reset}", clear_on_submit=True):
-                user_q = st.text_input("Digite sua dúvida e aperte ENTER:")
+            with st.form(key=f"ideal_form_{st.session_state.assistant_reset}", clear_on_submit=True):
+                user_q = st.text_input("Digite sua dúvida:")
                 submit_button = st.form_submit_button("🚀 PERGUNTAR", use_container_width=True)
                 
                 if submit_button and user_q:

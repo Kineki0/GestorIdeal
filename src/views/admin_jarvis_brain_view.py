@@ -5,7 +5,7 @@ from data import repository_excel as repository
 from datetime import datetime
 
 def display():
-    st.title("🧠 Centro de Treinamento do Jarvis")
+    st.title("🧠 Centro de Treinamento do Assistente Ideal")
     st.write("Gerencie o conhecimento do assistente e aprove sugestões dos usuários.")
 
     # 1. FORMULÁRIO PARA NOVO CONHECIMENTO (CURADORIA)
