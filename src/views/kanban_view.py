@@ -135,15 +135,15 @@ def _display_lead_details_modal(lead_id):
                 new_esforco = st.selectbox("Esforço Necessário", TAGS_ESFORCO, index=TAGS_ESFORCO.index(p['Esforco']) if p['Esforco'] in TAGS_ESFORCO else 0)
                 new_prazo = st.date_input("Próximo Retorno (Prazo)", value=pd.to_datetime(p['Prazo']).date() if pd.notna(p['Prazo']) else None)
             
-            new_desc = st.text_area("Descrição Detalhada (Editável)", p['Descricao'], height=150)
+            new_desc = st.text_area("Descrição Detalhada (Editável)", value=p['Descricao'], height=150)
             
-            if st.button("SALVAR TODAS AS ALTERAÇÕES", type="primary", use_container_width=True):
+            if st.button("SALVAR TODAS AS ALTERAÇÕES", type="primary", use_container_width=True, key=f"save_all_{lead_id}"):
                 repository.update_lead(lead_id, {
                     'Razao_Social': new_razao, 'Telefone': new_tel, 'Email': new_email,
                     'Nucleo': new_nucleo, 'Prioridade': new_prio, 'Risco': new_risco,
                     'Esforco': new_esforco, 'Prazo': new_prazo, 'Descricao': new_desc
                 }, auth_manager.get_user())
-                st.session_state['show_fullscreen_details'] = False # Fecha o modal
+                st.session_state['show_fullscreen_details'] = False
                 st.rerun()
 
         with tab2:
@@ -256,27 +256,42 @@ def _display_lead_details_modal(lead_id):
                 st.info("ℹ️ Leads em Ganhos ou Perdidos são finalizados e não permitem novos uploads.")
 
         with tab4:
-            st.write("### 💬 Central de Notas (Data + Usuário)")
-            with st.form(f"comment_{lead_id}"):
-                msg = st.text_area("Nova nota...")
-                if st.form_submit_button("POSTAR NOTA"):
-                    repository.add_comment_to_lead_history(lead_id, auth_manager.get_user(), msg)
-                    st.rerun()
+            st.write("### 📜 Timeline de Evolução")
+            
+            # Formulário de Nova Nota
+            with st.form(f"comment_{lead_id}", clear_on_submit=True):
+                msg = st.text_area("Nova nota interna...", placeholder="O que aconteceu hoje com este lead?")
+                if st.form_submit_button("Postar na Timeline", use_container_width=True, type="primary"):
+                    if msg:
+                        repository.add_comment_to_lead_history(lead_id, auth_manager.get_user(), msg)
+                        st.rerun()
+            
+            st.divider()
             
             hist = repository.get_all('Historico')
             if not hist.empty:
                 hist['ID_Lead_Clean'] = pd.to_numeric(hist['ID_Lead'], errors='coerce')
-                hist = hist[hist['ID_Lead_Clean'] == int(lead_id)].sort_values('Timestamp', ascending=False)
-            
-            c_com, c_sys = st.columns(2)
-            with c_com:
-                st.write("**📝 Notas Internas**")
-                for _, r in hist[hist['Tipo'] == 'Comentário'].iterrows():
-                    st.info(f"👤 {r['Usuario']} | 📅 {pd.to_datetime(r['Timestamp']).strftime('%d/%m %H:%M')}\n\n{r['Mensagem']}")
-            with c_sys:
-                st.write("**⚙️ Logs de Processo**")
-                for _, r in hist[hist['Tipo'] == 'Ação'].iterrows():
-                    st.caption(f"🕒 {pd.to_datetime(r['Timestamp']).strftime('%d/%m %H:%M')} - Alterou {r['Campo']}")
+                this_hist = hist[hist['ID_Lead_Clean'] == int(lead_id)].sort_values('Timestamp', ascending=False)
+                
+                if this_hist.empty:
+                    st.info("Nenhuma atividade registrada.")
+                else:
+                    for _, r in this_hist.iterrows():
+                        ts = pd.to_datetime(r['Timestamp']).strftime('%d/%m/%y %H:%M')
+                        user_name = r['Usuario']
+                        
+                        if r['Tipo'] == 'Comentário':
+                            with st.chat_message("user", avatar="👤"):
+                                st.write(f"**{user_name}** em {ts}")
+                                st.info(r['Mensagem'])
+                        else:
+                            with st.chat_message("assistant", avatar="⚙️"):
+                                st.caption(f"🔧 **Sistema** | {ts}")
+                                st.write(f"_{user_name}_ alterou **{r['Campo']}**")
+                                if r['Mensagem'] and r['Mensagem'] != "N/A":
+                                    st.write(f"ℹ️ {r['Mensagem']}")
+            else:
+                st.info("Histórico vazio.")
 
 def display():
     # --- SIDEBAR DE FILTROS ---

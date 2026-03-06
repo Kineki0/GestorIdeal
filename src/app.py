@@ -2,6 +2,7 @@
 import streamlit as st
 import pandas as pd
 import time
+from datetime import datetime
 from services import auth_manager
 from views import kanban_view, kanban_mobile_view, dashboard_view, calendar_view, admin_clientes_view, admin_servicos_view, admin_kanban_view, admin_jarvis_brain_view, floating_assistant
 from data import repository_excel as repository
@@ -43,6 +44,14 @@ def main():
     # --- Detecção de Dispositivo (Mobile vs Desktop) ---
     user_agent = st.context.headers.get("User-Agent", "")
     is_mobile = any(x in user_agent for x in ["Android", "iPhone", "iPad"])
+
+    # --- Backup Automático Diário ---
+    if st.session_state.google_authorized:
+        if 'last_backup_date' not in st.session_state or st.session_state.last_backup_date != datetime.now().date():
+            from services import drive_manager
+            if drive_manager.create_backup_snapshot():
+                st.session_state.last_backup_date = datetime.now().date()
+                st.toast("🛡️ Backup de segurança realizado no Drive!", icon="☁️")
 
     with st.sidebar:
         st.subheader(f"Bem-vindo(a), {user['Nome'].split(' ')[0]}!")

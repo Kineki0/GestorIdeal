@@ -207,6 +207,14 @@ def create_lead(data, user):
     dfs['Leads'] = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
     _add_history(dfs, new_id, "Sistema", "Ação", "Lead", "N/A", "Criado", "Lead cadastrado no sistema")
     commit_to_file()
+
+    # --- Automação Google Drive (Criação de Pastas) ---
+    try:
+        from services import drive_manager
+        if drive_manager.check_drive_connection():
+            drive_manager.setup_lead_folders(data['Razao_Social'])
+    except Exception: pass
+
     return new_id
 
 def update_lead(lead_id, updates, user, comment="", is_comment=False):
