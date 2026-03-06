@@ -67,49 +67,48 @@ def _display_lead_details_modal(lead_id):
     p = p_filter.iloc[0]
     
     with st.container(border=True):
-        h1, h2 = st.columns([9, 1])
-        h1.subheader(f"📄 Gestão do Processo: {p['Razao_Social']} (#{p['ID_Lead']})")
-        if h2.button("✖️", key=f"close_{lead_id}"):
+        h1, h2 = st.columns([15, 1])
+        h1.subheader(f"📄 Gestão: {p['Razao_Social']} (#{p['ID_Lead']})")
+        if h2.button("✖️", key=f"close_{lead_id}", use_container_width=True):
             st.session_state['show_fullscreen_details'] = False
             st.rerun()
 
         # --- ÁREA ADMINISTRATIVA ---
         user_profile = auth_manager.get_user().get('Perfil', 'Usuário')
         if user_profile == 'Admin':
-            with st.expander("⚠️ ÁREA ADMINISTRATIVA: EXCLUSÃO", expanded=False):
-                st.warning("Atenção: A exclusão é permanente e removerá todo o histórico e anexos.")
-                if st.button("🗑️ EXCLUIR ESTE LEAD PERMANENTEMENTE", type="secondary", use_container_width=True):
+            with st.expander("⚠️ ÁREA ADMINISTRATIVA", expanded=False):
+                if st.button("🗑️ EXCLUIR LEAD PERMANENTEMENTE", type="secondary", use_container_width=True):
                     repository.delete_lead(lead_id)
                     st.session_state['show_fullscreen_details'] = False
-                    st.toast("🚨 Lead excluído do sistema.", icon="🗑️")
+                    st.toast("🚨 Lead excluído.", icon="🗑️")
                     st.rerun()
         
         st.divider()
-        col_act1, col_act2, col_act3 = st.columns(3)
+        
+        # --- BOTÕES DE AÇÃO (LAYOUT VERTICAL PARA MELHOR ENCAIXE) ---
         stages = ETAPAS_KANBAN
         curr_idx = stages.index(p['Etapa_Atual'])
         
-        # Botão VOLTAR (Bloqueado em Leads e Ganhos/Perdidos)
-        if curr_idx > 0 and p['Etapa_Atual'] not in ['Ganhos', 'Perdidos']:
-            if col_act1.button(f"⬅️ Recuar para {stages[curr_idx-1]}", use_container_width=True):
-                repository.update_lead(lead_id, {'Etapa_Atual': stages[curr_idx-1]}, auth_manager.get_user(), f"Processo recuado para {stages[curr_idx-1]}")
-                st.rerun()
-        
-        # Botão AVANÇAR (Bloqueado em Ganhos/Perdidos)
+        # 1. Ação Principal: AVANÇAR
         if curr_idx < len(stages) - 1 and p['Etapa_Atual'] not in ['Ganhos', 'Perdidos']:
-            if col_act2.button(f"➡️ Avançar para {stages[curr_idx+1]}", use_container_width=True, type="primary"):
-                repository.update_lead(lead_id, {'Etapa_Atual': stages[curr_idx+1]}, auth_manager.get_user(), f"Processo avançado para {stages[curr_idx+1]}")
+            if st.button(f"➡️ AVANÇAR PARA: {stages[curr_idx+1]}", use_container_width=True, type="primary"):
+                repository.update_lead(lead_id, {'Etapa_Atual': stages[curr_idx+1]}, auth_manager.get_user(), f"Avançado para {stages[curr_idx+1]}")
                 st.rerun()
         
-        # ATALHOS FINAIS
-        with col_act3:
-            ga, pe = st.columns(2)
-            if ga.button("🏆 GANHO", use_container_width=True):
-                repository.update_lead(lead_id, {'Etapa_Atual': 'Ganhos'}, auth_manager.get_user(), "🎯 VENDA CONCLUÍDA")
+        # 2. Ação Secundária: RECUAR
+        if curr_idx > 0 and p['Etapa_Atual'] not in ['Ganhos', 'Perdidos']:
+            if st.button(f"⬅️ RECUAR PARA: {stages[curr_idx-1]}", use_container_width=True):
+                repository.update_lead(lead_id, {'Etapa_Atual': stages[curr_idx-1]}, auth_manager.get_user(), f"Recuado para {stages[curr_idx-1]}")
                 st.rerun()
-            if pe.button("📉 PERDIDO", use_container_width=True):
-                repository.update_lead(lead_id, {'Etapa_Atual': 'Perdidos'}, auth_manager.get_user(), "❌ PROCESSO ENCERRADO")
-                st.rerun()
+        
+        # 3. Finalizações (Lado a Lado para economizar altura)
+        col_f1, col_f2 = st.columns(2)
+        if col_f1.button("🏆 GANHO", use_container_width=True):
+            repository.update_lead(lead_id, {'Etapa_Atual': 'Ganhos'}, auth_manager.get_user(), "🎯 VENDA CONCLUÍDA")
+            st.rerun()
+        if col_f2.button("📉 PERDIDO", use_container_width=True):
+            repository.update_lead(lead_id, {'Etapa_Atual': 'Perdidos'}, auth_manager.get_user(), "❌ PROCESSO ENCERRADO")
+            st.rerun()
 
         st.divider()
 
@@ -188,16 +187,23 @@ def _display_lead_details_modal(lead_id):
             
             # --- 3. LISTAGEM DOS ITENS ---
             for i, item in enumerate(items):
-                col_c, col_t = st.columns([0.1, 0.9])
-                # Se clicar no checkbox, atualiza o status e o gráfico muda automaticamente
+                col_c, col_t, col_d = st.columns([0.1, 0.8, 0.1])
+                
+                # Checkbox de conclusão
                 if col_c.checkbox("", value=item['done'], key=f"chk_{lead_id}_{i}") != item['done']:
                     items[i]['done'] = not item['done']
                     repository.update_lead(lead_id, {'Checklist': json.dumps(items)}, auth_manager.get_user())
                     st.rerun()
                 
-                # Texto riscado se estiver concluído
+                # Texto da tarefa
                 label = f"~~{item['task']}~~" if item['done'] else item['task']
                 col_t.markdown(label)
+                
+                # Botão de Deletar Item
+                if col_d.button("❌", key=f"del_chk_{lead_id}_{i}", help="Remover esta tarefa"):
+                    items.pop(i)
+                    repository.update_lead(lead_id, {'Checklist': json.dumps(items)}, auth_manager.get_user())
+                    st.rerun()
 
         with tab3:
             st.write("### 📂 Gestão de Documentos")
@@ -277,15 +283,7 @@ def display():
 
     st.markdown("""
         <style>
-            /* REMOVER LIMITADORES DE LARGURA DA PÁGINA */
-            .main .block-container {
-                max-width: none !important;
-                width: 100% !important;
-                padding-left: 2rem !important;
-                padding-right: 2rem !important;
-            }
-
-            /* FORÇAR CONTAINER PRINCIPAL A PERMITIR SCROLL HORIZONTAL */
+            /* FORÇAR CONTAINER DAS COLUNAS A PERMITIR SCROLL HORIZONTAL */
             [data-testid="stHorizontalBlock"] { 
                 display: flex !important;
                 flex-direction: row !important;
@@ -295,15 +293,30 @@ def display():
                 padding: 20px 10px !important;
                 width: 100% !important;
             }
+
+            /* LARGURA DAS COLUNAS (Ajustado para 380px) */
+            [data-testid="stHorizontalBlock"] > div, div[data-testid="column"] {
+                width: 380px !important;
+                flex: none !important;
+                min-width: 380px !important;
+            }
             
-            /* Alerta de Aging (Borda e Animação Suave) */
-            .aging-alert {
-                border-left: 8px solid #ffcc00 !important;
+            /* Título da Coluna (Restaurando Identidade) */
+            .lane-title {
+                color: #004a99 !important;
+                font-weight: bold !important;
+                font-size: 1.1rem !important;
+                text-align: center !important;
+                border-bottom: 3px solid #004a99 !important;
+                padding-bottom: 10px !important;
+                margin-bottom: 20px !important;
+                text-transform: uppercase !important;
+                letter-spacing: 1px !important;
             }
 
             /* Estilização da Barra de Rolagem */
             [data-testid="stHorizontalBlock"]::-webkit-scrollbar {
-                height: 12px;
+                height: 10px;
             }
             [data-testid="stHorizontalBlock"]::-webkit-scrollbar-track {
                 background: #f1f1f1;
@@ -313,52 +326,34 @@ def display():
                 background: #004a99;
                 border-radius: 10px;
             }
-            
-            /* Título da Coluna */
-            .lane-title {
-                color: #004a99;
-                font-weight: bold;
-                font-size: 1.3rem;
-                text-align: center;
-                border-bottom: 3px solid #004a99;
-                padding-bottom: 12px;
-                margin-bottom: 25px;
-                text-transform: uppercase;
-                letter-spacing: 1.5px;
-            }
 
-            /* Card Styling */
+            /* Card Styling & Text Wrap */
             .stButton > button[key^="card_btn_"] { 
                 height: auto !important; 
-                padding: 20px !important; 
+                padding: 15px !important; 
                 text-align: left !important; 
                 display: block !important; 
-                border-radius: 12px !important; 
+                border-radius: 10px !important; 
                 border: 1px solid rgba(0,74,153,0.15) !important; 
                 background-color: white !important; 
                 transition: 0.2s !important; 
-                line-height: 1.6 !important;
-                margin-bottom: 15px !important;
-                box-shadow: 0 4px 6px rgba(0,0,0,0.05) !important;
+                line-height: 1.4 !important;
+                margin-bottom: 12px !important;
+                box-shadow: 0 4px 6px rgba(0,0,0,0.04) !important;
+            }
+
+            /* Forçar quebra de linha para respeitar o \n do Python */
+            .stButton > button[key^="card_btn_"] div p {
+                white-space: pre-wrap !important;
+                word-wrap: break-word !important;
+                display: block !important;
             }
             
             .stButton > button[key^="card_btn_"]:hover { 
                 border-color: #004a99 !important; 
-                box-shadow: 0 8px 15px rgba(0,74,153,0.12) !important; 
-                transform: translateY(-3px) !important; 
+                box-shadow: 0 6px 12px rgba(0,74,153,0.1) !important; 
+                transform: translateY(-2px) !important; 
                 background-color: #f8fbff !important;
-            }
-
-            .stButton > button[key^="card_btn_"] div p { 
-                white-space: pre-wrap !important; 
-                word-wrap: break-word !important; 
-                font-size: 1rem !important;
-            }
-            
-            /* LARGURA FIXA DAS COLUNAS (Para forçar o scroll) */
-            [data-testid="column"] {
-                min-width: 600px !important;
-                flex: 0 0 600px !important;
             }
         </style>
     """, unsafe_allow_html=True)
@@ -380,8 +375,9 @@ def display():
     
     # --- APLICAÇÃO DOS FILTROS ---
     if search_query:
-        mask = all_leads['Razao_Social'].str.contains(search_query, case=False, na=False) | \
-               all_leads['CNPJ'].str.contains(search_query, na=False)
+        # Garante que as colunas sejam tratadas como string para a busca
+        mask = all_leads['Razao_Social'].astype(str).str.contains(search_query, case=False, na=False) | \
+               all_leads['CNPJ'].astype(str).str.contains(search_query, na=False)
         all_leads = all_leads[mask]
     
     if filter_nucleo:
@@ -420,7 +416,7 @@ def display():
                         f"📞 {p['Telefone']} | 👤 {p['Nome_Contato']}\n\n"
                         f"📅 Cadastrado em: {criado} ({dias_na_etapa}d na fase)\n\n"
                         f"⏳ Próximo Retorno: {retorno}\n"
-                        f"────────────────────\n"
+                        f"────────────────────\n\n"
                         f"💬 {p.get('Ultimo_Comentario', 'Sem notas')}"
                     )
                     

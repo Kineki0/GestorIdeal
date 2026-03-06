@@ -55,14 +55,13 @@ def display_floating_assistant():
     st.markdown('<div id="floating-assistant-root">', unsafe_allow_html=True)
     with st.popover("🤖"):
         st.subheader("🤖 Assistente Ideal", divider="blue")
-        st.caption("Olá! Sou o Jarvis, seu Assistente Ideal. Como posso te ajudar hoje?")
+        st.caption("Olá! Sou seu Assistente Ideal, como posso te ajudar hoje?")
 
-        # Botões de atalho rápido
-        c1, c2 = st.columns(2)
-        if c1.button("❓ Ajuda", use_container_width=True, key="float_btn_ajuda"):
+        # Botões de atalho rápido (Empilhados)
+        if st.button("❓ Ajuda", use_container_width=True, key="float_btn_ajuda"):
             st.session_state.last_jarvis_res = assistant_manager.ask_jarvis("ajuda")
             st.rerun()
-        if c2.button("📖 Tutoriais", use_container_width=True, key="float_btn_tut"):
+        if st.button("📖 Tutoriais", use_container_width=True, key="float_btn_tut"):
             st.session_state.last_jarvis_res = assistant_manager.ask_jarvis("tutorial")
             st.rerun()
         
