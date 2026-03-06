@@ -161,42 +161,28 @@ def _display_lead_details_modal(lead_id):
 def display():
     st.markdown("""
         <style>
-            /* REMOVER LIMITADORES GLOBAIS DE LARGURA */
+            /* REMOVER LIMITADORES DE LARGURA DA PÁGINA */
             .main .block-container {
                 max-width: none !important;
                 width: 100% !important;
-                padding-left: 1rem !important;
-                padding-right: 1rem !important;
-                padding-top: 1rem !important;
+                padding-left: 2rem !important;
+                padding-right: 2rem !important;
             }
 
-            [data-testid="stAppViewContainer"] {
-                width: 100% !important;
-            }
-
-            /* Permitir que o container vertical pai não limite a largura */
-            [data-testid="stVerticalBlock"] {
-                width: 100% !important;
-                max-width: none !important;
-            }
-
-            /* FORÇAR CONTAINER DAS COLUNAS A TRANSBORDAR HORIZONTALMENTE */
+            /* FORÇAR CONTAINER PRINCIPAL A PERMITIR SCROLL HORIZONTAL */
             [data-testid="stHorizontalBlock"] { 
                 display: flex !important;
                 flex-direction: row !important;
                 flex-wrap: nowrap !important; 
                 overflow-x: auto !important; 
-                overflow-y: hidden !important;
-                gap: 2rem !important; 
+                gap: 1.5rem !important; 
                 padding: 20px 10px !important;
                 width: 100% !important;
-                min-height: 80vh !important;
             }
 
             /* Estilização da Barra de Rolagem */
             [data-testid="stHorizontalBlock"]::-webkit-scrollbar {
-                height: 14px;
-                display: block !important;
+                height: 12px;
             }
             [data-testid="stHorizontalBlock"]::-webkit-scrollbar-track {
                 background: #f1f1f1;
@@ -205,64 +191,53 @@ def display():
             [data-testid="stHorizontalBlock"]::-webkit-scrollbar-thumb {
                 background: #004a99;
                 border-radius: 10px;
-                border: 3px solid #f1f1f1;
             }
             
-            /* LARGURA FIXA DAS COLUNAS (Sem limites) */
-            [data-testid="column"] {
-                min-width: 1400px !important;
-                flex: 0 0 1400px !important;
-                width: 1400px !important;
-            }
-            
-            /* Container com borda para a Lane */
-            [data-testid="stVerticalBlock"] > div:has(.lane-title) {
-                background-color: #f8f9fa;
-                border: 2px solid #e9ecef !important;
-                border-radius: 15px !important;
-                padding: 20px !important;
-            }
-
             /* Título da Coluna */
             .lane-title {
                 color: #004a99;
-                font-weight: 800;
-                font-size: 1.5rem;
+                font-weight: bold;
+                font-size: 1.3rem;
                 text-align: center;
-                border-bottom: 4px solid #004a99;
-                padding-bottom: 15px;
-                margin-bottom: 30px;
+                border-bottom: 3px solid #004a99;
+                padding-bottom: 12px;
+                margin-bottom: 25px;
                 text-transform: uppercase;
-                letter-spacing: 2px;
+                letter-spacing: 1.5px;
             }
 
             /* Card Styling */
             .stButton > button[key^="card_btn_"] { 
                 height: auto !important; 
-                padding: 25px !important; 
+                padding: 20px !important; 
                 text-align: left !important; 
                 display: block !important; 
-                border-radius: 15px !important; 
-                border: 1px solid rgba(0,74,153,0.1) !important; 
+                border-radius: 12px !important; 
+                border: 1px solid rgba(0,74,153,0.15) !important; 
                 background-color: white !important; 
-                transition: 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275) !important; 
+                transition: 0.2s !important; 
                 line-height: 1.6 !important;
-                margin-bottom: 20px !important;
-                box-shadow: 0 4px 10px rgba(0,0,0,0.04) !important;
+                margin-bottom: 15px !important;
+                box-shadow: 0 4px 6px rgba(0,0,0,0.05) !important;
             }
             
             .stButton > button[key^="card_btn_"]:hover { 
                 border-color: #004a99 !important; 
-                box-shadow: 0 12px 25px rgba(0,74,153,0.15) !important; 
-                transform: scale(1.02) !important; 
-                background-color: #ffffff !important;
+                box-shadow: 0 8px 15px rgba(0,74,153,0.12) !important; 
+                transform: translateY(-3px) !important; 
+                background-color: #f8fbff !important;
             }
 
             .stButton > button[key^="card_btn_"] div p { 
                 white-space: pre-wrap !important; 
                 word-wrap: break-word !important; 
-                font-size: 1.1rem !important;
-                color: #1a1a1a !important;
+                font-size: 1rem !important;
+            }
+            
+            /* LARGURA FIXA DAS COLUNAS (Para forçar o scroll) */
+            [data-testid="column"] {
+                min-width: 1200px !important;
+                flex: 0 0 1200px !important;
             }
         </style>
     """, unsafe_allow_html=True)
