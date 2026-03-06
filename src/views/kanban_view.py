@@ -2,6 +2,7 @@
 import streamlit as st
 import pandas as pd
 import json
+import re
 from datetime import datetime
 from data import repository_excel as repository
 from services import auth_manager, anexos_manager, pdf_manager
@@ -13,27 +14,46 @@ def _display_create_lead_form():
         st.subheader("🚀 Cadastro de Novo Lead")
         with st.form("form_create_lead_strict", clear_on_submit=True):
             c1, c2 = st.columns(2)
-            razao = c1.text_input("Razão Social *")
-            telefone = c1.text_input("Telefone (WhatsApp) *")
-            contato = c2.text_input("Nome do Contato *")
-            cnpj = c2.text_input("CNPJ *")
-            email = st.text_input("Email (Opcional)")
+            razao = c1.text_input("Razão Social *", placeholder="Ex: Empresa Exemplo LTDA")
+            telefone = c1.text_input("Telefone (WhatsApp) *", placeholder="Ex: 11999998888")
+            contato = c2.text_input("Nome do Contato *", placeholder="Ex: João Silva")
+            cnpj = c2.text_input("CNPJ *", placeholder="Apenas números (14 dígitos)")
+            email = st.text_input("Email (Opcional)", placeholder="exemplo@email.com")
             
             st.info("💡 Prazo e Observações serão definidos na etapa 'Em Progresso'.")
             
             if st.form_submit_button("CADASTRAR NO SISTEMA", use_container_width=True, type="primary"):
-                # VALIDAÇÃO RIGOROSA conforme solicitado
+                # 1. LIMPEZA DE DADOS
+                tel_clean = re.sub(r'\D', '', telefone)
+                cnpj_clean = re.sub(r'\D', '', cnpj)
+                
+                # 2. VALIDAÇÕES
+                errors = []
                 if not razao or not telefone or not contato or not cnpj:
-                    st.error("❌ ERRO: Razão Social, Telefone, Contato e CNPJ são OBRIGATÓRIOS.")
+                    errors.append("❌ Razão Social, Telefone, Contato e CNPJ são OBRIGATÓRIOS.")
+                
+                if tel_clean and len(tel_clean) not in [8, 9, 10, 11]:
+                    errors.append("❌ TELEFONE inválido. Deve ter 8 ou 9 dígitos (com ou sem DDD).")
+                
+                if cnpj_clean and len(cnpj_clean) != 14:
+                    errors.append("❌ CNPJ inválido. Deve conter exatamente 14 dígitos numéricos.")
+                
+                if email and not re.match(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$', email):
+                    errors.append("❌ FORMATO DE EMAIL inválido.")
+
+                # 3. PROCESSAMENTO
+                if errors:
+                    for err in errors: st.error(err)
                 else:
                     repository.create_lead({
                         'Razao_Social': razao, 
-                        'Telefone': telefone, 
+                        'Telefone': tel_clean, # Salva apenas números
                         'Nome_Contato': contato, 
-                        'CNPJ': cnpj, 
+                        'CNPJ': cnpj_clean, # Salva apenas números
                         'Email': email
                     }, auth_manager.get_user())
                     st.session_state['show_create_lead_modal'] = False
+                    st.toast("✅ Lead cadastrado com sucesso!", icon="🚀")
                     st.rerun()
         if st.button("CANCELAR CADASTRO", use_container_width=True):
             st.session_state['show_create_lead_modal'] = False
