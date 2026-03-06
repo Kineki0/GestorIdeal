@@ -66,6 +66,8 @@ def _display_lead_details_modal(lead_id):
     if p_filter.empty: return
     p = p_filter.iloc[0]
     
+    stages = repository.get_kanban_stages()
+    
     with st.container(border=True):
         h1, h2 = st.columns([15, 1])
         h1.subheader(f"📄 Gestão: {p['Razao_Social']} (#{p['ID_Lead']})")
@@ -86,19 +88,24 @@ def _display_lead_details_modal(lead_id):
         st.divider()
         
         # --- BOTÕES DE AÇÃO (LAYOUT VERTICAL PARA MELHOR ENCAIXE) ---
-        stages = ETAPAS_KANBAN
-        curr_idx = stages.index(p['Etapa_Atual'])
+        current_stages = repository.get_kanban_stages()
+        if p['Etapa_Atual'] in current_stages:
+            curr_idx = current_stages.index(p['Etapa_Atual'])
+        else:
+            curr_idx = 0 # Fallback
         
         # 1. Ação Principal: AVANÇAR
-        if curr_idx < len(stages) - 1 and p['Etapa_Atual'] not in ['Ganhos', 'Perdidos']:
-            if st.button(f"➡️ AVANÇAR PARA: {stages[curr_idx+1]}", use_container_width=True, type="primary"):
-                repository.update_lead(lead_id, {'Etapa_Atual': stages[curr_idx+1]}, auth_manager.get_user(), f"Avançado para {stages[curr_idx+1]}")
+        if curr_idx < len(current_stages) - 1 and p['Etapa_Atual'] not in ['Ganhos', 'Perdidos']:
+            target_stage = current_stages[curr_idx+1]
+            if st.button(f"➡️ AVANÇAR PARA: {target_stage}", use_container_width=True, type="primary"):
+                repository.update_lead(lead_id, {'Etapa_Atual': target_stage}, auth_manager.get_user(), f"Avançado para {target_stage}")
                 st.rerun()
         
         # 2. Ação Secundária: RECUAR
         if curr_idx > 0 and p['Etapa_Atual'] not in ['Ganhos', 'Perdidos']:
-            if st.button(f"⬅️ RECUAR PARA: {stages[curr_idx-1]}", use_container_width=True):
-                repository.update_lead(lead_id, {'Etapa_Atual': stages[curr_idx-1]}, auth_manager.get_user(), f"Recuado para {stages[curr_idx-1]}")
+            target_stage = current_stages[curr_idx-1]
+            if st.button(f"⬅️ RECUAR PARA: {target_stage}", use_container_width=True):
+                repository.update_lead(lead_id, {'Etapa_Atual': target_stage}, auth_manager.get_user(), f"Recuado para {target_stage}")
                 st.rerun()
         
         # 3. Finalizações (Lado a Lado para economizar altura)
@@ -387,9 +394,10 @@ def display():
         all_leads = all_leads[all_leads['Prioridade'].isin(filter_prioridade)]
     
     # Renderização das Colunas do Kanban
-    cols = st.columns(len(ETAPAS_KANBAN))
+    current_stages = repository.get_kanban_stages()
+    cols = st.columns(len(current_stages))
     
-    for i, etapa in enumerate(ETAPAS_KANBAN):
+    for i, etapa in enumerate(current_stages):
         with cols[i]:
             # Container com borda para criar a "Lane"
             with st.container(border=True):

@@ -59,13 +59,11 @@ def main():
             st.subheader("Administração")
             admin_page = st.radio(
                 "Admin",
-                ["Nenhum", "Gerenciar Clientes", "Gerenciar Serviços", "Gerenciar Kanban", "Treinar Jarvis"],
+                ["Nenhum", "Gerenciar Kanban", "Treinar Jarvis"],
                 label_visibility="collapsed"
             )
 
         st.divider()
-        # O botão manual foi removido conforme solicitado, agora é automático.
-            
         if st.button("Logout", type="primary", use_container_width=True):
             auth_manager.logout()
 
@@ -74,11 +72,7 @@ def main():
 
     # Roteamento de página
     if admin_page and admin_page != "Nenhum":
-        if admin_page == "Gerenciar Clientes":
-            admin_clientes_view.display()
-        elif admin_page == "Gerenciar Serviços":
-            admin_servicos_view.display()
-        elif admin_page == "Gerenciar Kanban":
+        if admin_page == "Gerenciar Kanban":
             admin_kanban_view.display()
         elif admin_page == "Treinar Jarvis":
             admin_jarvis_brain_view.display()

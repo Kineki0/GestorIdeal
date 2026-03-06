@@ -349,23 +349,54 @@ def delete_lead(lead_id):
     commit_to_file()
     return True
 
+def delete_leads_by_stage(stage_name):
+    """Remove todos os leads de uma etapa específica, incluindo histórico e anexos."""
+    dfs = get_session_dfs()
+    if 'Leads' not in dfs or dfs['Leads'].empty: return False
+    
+    # 1. Identifica IDs dos leads nesta etapa
+    leads_to_remove = dfs['Leads'][dfs['Leads']['Etapa_Atual'] == stage_name]['ID_Lead'].tolist()
+    if not leads_to_remove: return False
+    
+    # 2. Remove os leads
+    dfs['Leads'] = dfs['Leads'][dfs['Leads']['Etapa_Atual'] != stage_name]
+    
+    # 3. Remove histórico vinculado
+    if 'Historico' in dfs:
+        dfs['Historico'] = dfs['Historico'][~dfs['Historico']['ID_Lead'].isin(leads_to_remove)]
+        
+    # 4. Remove anexos vinculados
+    if 'Anexos' in dfs:
+        dfs['Anexos'] = dfs['Anexos'][~((dfs['Anexos']['Tipo_Referencia'] == 'Lead') & (dfs['Anexos']['ID_Referencia'].isin(leads_to_remove)))]
+    
+    commit_to_file()
+    return True
+
 def sync_kanban_stages(edited_df):
     """Sincroniza as etapas do Kanban com as edições feitas no admin."""
     dfs = get_session_dfs()
     # Garante que a coluna 'Ordem' seja preenchida se houver novos registros
     edited_df = edited_df.reset_index(drop=True)
     edited_df['Ordem'] = edited_df.index
-    
+
     # Gera novos IDs se necessário (registros com ID_Etapa vazio)
     max_id = edited_df['ID_Etapa'].max() if not edited_df['ID_Etapa'].empty else 0
     for idx, row in edited_df.iterrows():
         if pd.isna(row['ID_Etapa']):
             max_id += 1
             edited_df.at[idx, 'ID_Etapa'] = max_id
-            
+
     dfs['KanbanConfig'] = edited_df
     commit_to_file()
     return True
+
+def get_kanban_stages():
+    """Retorna a lista de nomes das etapas do Kanban na ordem correta."""
+    dfs = get_session_dfs()
+    df = dfs.get('KanbanConfig', pd.DataFrame())
+    if df.empty:
+        return config.ETAPAS_KANBAN
+    return df.sort_values('Ordem')['Nome_Etapa'].tolist()
 
 def rename_kanban_stage(o, n): return False
 def remove_kanban_stage(n): return False
