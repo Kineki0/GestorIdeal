@@ -161,26 +161,77 @@ def _display_lead_details_modal(lead_id):
 def display():
     st.markdown("""
         <style>
-            [data-testid="stHorizontalBlock"] { flex-wrap: nowrap !important; overflow-x: auto !important; gap: 1.5rem !important; padding: 20px 10px !important; }
-            [data-testid="column"] { 
-                min-width: 450px !important; 
-                border: 1px solid rgba(0,74,153,0.2) !important; 
-                border-radius: 15px !important; 
-                padding: 20px !important; 
-                background-color: rgba(0, 74, 153, 0.02) !important;
-                box-shadow: 0 4px 6px rgba(0,0,0,0.02) !important;
+            /* Container das Colunas (Lanes) */
+            [data-testid="stHorizontalBlock"] { 
+                flex-wrap: nowrap !important; 
+                overflow-x: auto !important; 
+                gap: 1rem !important; 
+                padding: 10px 5px !important; 
             }
-            .stButton > button[key^="card_btn_"] { height: auto !important; padding: 15px !important; text-align: left !important; display: block !important; border-radius: 12px !important; border: 1px solid rgba(0,74,153,0.2) !important; background-color: var(--secondary-background-color) !important; transition: 0.3s !important; line-height: 1.5 !important; }
-            .stButton > button[key^="card_btn_"] div p { white-space: pre-wrap !important; word-wrap: break-word !important; }
-            .stButton > button[key^="card_btn_"]:hover { border-color: #004a99 !important; box-shadow: 0 4px 12px rgba(0,74,153,0.1) !important; transform: translateY(-2px) !important; }
-            .sla-tag { font-size: 0.7rem; background: #004a99; color: white; padding: 2px 6px; border-radius: 5px; float: right; }
-            h3 { color: #004a99 !important; border-bottom: 2px solid #004a99; padding-bottom: 5px; margin-bottom: 20px !important; }
+            
+            /* Estilização da "Pista" (Lane) do Kanban */
+            .kanban-lane {
+                background-color: #f8f9fa;
+                border: 1px solid #e9ecef;
+                border-radius: 12px;
+                padding: 15px;
+                min-width: 400px;
+                height: 100%;
+            }
+
+            /* Título da Coluna */
+            .lane-title {
+                color: #004a99;
+                font-weight: bold;
+                font-size: 1.2rem;
+                text-align: center;
+                border-bottom: 2px solid #004a99;
+                padding-bottom: 10px;
+                margin-bottom: 20px;
+                text-transform: uppercase;
+                letter-spacing: 1px;
+            }
+
+            /* Card Styling */
+            .stButton > button[key^="card_btn_"] { 
+                height: auto !important; 
+                padding: 15px !important; 
+                text-align: left !important; 
+                display: block !important; 
+                border-radius: 10px !important; 
+                border: 1px solid rgba(0,74,153,0.15) !important; 
+                background-color: white !important; 
+                transition: 0.2s !important; 
+                line-height: 1.4 !important;
+                margin-bottom: 10px !important;
+                box-shadow: 0 2px 4px rgba(0,0,0,0.05) !important;
+            }
+            
+            .stButton > button[key^="card_btn_"]:hover { 
+                border-color: #004a99 !important; 
+                box-shadow: 0 4px 12px rgba(0,74,153,0.1) !important; 
+                transform: translateY(-2px) !important; 
+                background-color: #f0f7ff !important;
+            }
+
+            .stButton > button[key^="card_btn_"] div p { 
+                white-space: pre-wrap !important; 
+                word-wrap: break-word !important; 
+                font-size: 0.9rem !important;
+            }
+            
+            /* Ajuste de largura mínima das colunas do Streamlit para o scroll horizontal */
+            [data-testid="column"] {
+                min-width: 420px !important;
+            }
         </style>
     """, unsafe_allow_html=True)
 
-    h1, h2 = st.columns([7, 3])
-    h1.title("🎯 Fluxo de Operações")
-    with h2:
+    # Cabeçalho da Página (fora das colunas estilizadas)
+    head_col1, head_col2 = st.columns([7, 3])
+    with head_col1:
+        st.title("🎯 Fluxo de Operações")
+    with head_col2:
         sort_order = st.selectbox("Ordenar por:", ["Mais Recentes", "Mais Antigos"])
         if st.button("＋ NOVO LEAD", use_container_width=True, type="primary"):
             st.session_state['show_create_lead_modal'] = True
@@ -190,33 +241,42 @@ def display():
     if st.session_state.get('show_fullscreen_details'): _display_lead_details_modal(st.session_state['selected_lead_id'])
 
     all_leads = repository.get_detailed_leads(sort_order)
+    
+    # Renderização das Colunas do Kanban
     cols = st.columns(len(ETAPAS_KANBAN))
     
     for i, etapa in enumerate(ETAPAS_KANBAN):
         with cols[i]:
-            st.markdown(f"### {etapa}")
-            etapa_leads = all_leads[all_leads['Etapa_Atual'] == etapa]
-            
-            for _, p in etapa_leads.iterrows():
-                dias = (datetime.now() - pd.to_datetime(p['Data_Entrada_Etapa'])).days if pd.notna(p.get('Data_Entrada_Etapa')) else 0
-                criado = pd.to_datetime(p['Data_Criacao']).strftime('%d/%m/%y') if pd.notna(p['Data_Criacao']) else "N/A"
-                retorno = pd.to_datetime(p['Prazo']).strftime('%d/%m/%y') if pd.notna(p['Prazo']) else "Sem data"
+            # Container com borda para criar a "Lane"
+            with st.container(border=True):
+                st.markdown(f"<div class='lane-title'>{etapa}</div>", unsafe_allow_html=True)
                 
-                label_text = (
-                    f"🏢 {p['Razao_Social']}\n\n"
-                    f"📞 {p['Telefone']} | 👤 {p['Nome_Contato']}\n\n"
-                    f"📅 Cadastrado em: {criado} ({dias}d na fase)\n\n"
-                    f"⏳ Próximo Retorno: {retorno}\n\n"
-                    f"────────────────────\n\n"
-                    f"💬 {p.get('Ultimo_Comentario', 'Sem notas')}"
-                )
+                etapa_leads = all_leads[all_leads['Etapa_Atual'] == etapa]
                 
-                with st.container():
+                if etapa_leads.empty:
+                    st.caption("Nenhum item nesta etapa.")
+                
+                for _, p in etapa_leads.iterrows():
+                    dias = (datetime.now() - pd.to_datetime(p['Data_Entrada_Etapa'])).days if pd.notna(p.get('Data_Entrada_Etapa')) else 0
+                    criado = pd.to_datetime(p['Data_Criacao']).strftime('%d/%m/%y') if pd.notna(p['Data_Criacao']) else "N/A"
+                    retorno = pd.to_datetime(p['Prazo']).strftime('%d/%m/%y') if pd.notna(p['Prazo']) else "Sem data"
+                    
+                    label_text = (
+                        f"🏢 **{p['Razao_Social']}**\n\n"
+                        f"📞 {p['Telefone']} | 👤 {p['Nome_Contato']}\n\n"
+                        f"📅 Cadastrado em: {criado} ({dias}d na fase)\n\n"
+                        f"⏳ Próximo Retorno: {retorno}\n"
+                        f"────────────────────\n"
+                        f"💬 {p.get('Ultimo_Comentario', 'Sem notas')}"
+                    )
+                    
+                    # Card do Lead
                     if st.button(label_text, key=f"card_btn_{p['ID_Lead']}", use_container_width=True):
                         st.session_state['selected_lead_id'] = p['ID_Lead']
                         st.session_state['show_fullscreen_details'] = True
                         st.rerun()
                     
+                    # Ações rápidas do Card
                     with st.popover("💬 Nota Rápida", use_container_width=True):
                         quick_note = st.text_area("Escreva sua nota...", key=f"quick_note_{p['ID_Lead']}")
                         if st.button("Salvar Nota", key=f"btn_save_{p['ID_Lead']}", type="primary"):
