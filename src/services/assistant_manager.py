@@ -3,28 +3,6 @@ from data import repository_excel as repository
 
 # Base de Conhecimento Fixa (Respostas + Tutoriais Integrados)
 STATIC_KNOWLEDGE = {
-    "ajuda": """
-    🌟 **Eu posso te ajudar com os seguintes temas:**
-    - **cadastro**: Como criar novos leads corretamente.
-    - **fluxo**: Entenda as etapas do Kanban.
-    - **aging / alerta amarelo**: O que significa o aviso de atraso ⚠️.
-    - **checklist**: Como as tarefas automáticas funcionam.
-    - **anexos / arquivos**: Como enviar e gerenciar documentos.
-    - **relatorio**: Como exportar dados para o Excel.
-    - **backup**: Segurança e snapshots dos seus dados.
-    - **tutorial**: Lista de guias passo a passo disponíveis.
-    
-    *Digite o nome do tema ou uma pergunta sobre ele!*
-    """,
-    
-    "tutorial": """
-    📖 **Tutoriais Disponíveis:**
-    1. **Tutorial Cadastro**: Passo a passo do registro inicial.
-    2. **Tutorial Movimentação**: Como avançar um lead no funil.
-    3. **Tutorial Arquivos**: Como subir e deletar documentos no Drive.
-    4. **Tutorial Dashboard**: Como ler os gráficos de performance.
-    """,
-
     "cadastro": """
     📝 **SOBRE CADASTRO DE LEADS:**
     Para cadastrar um novo lead, use o botão azul **'＋ NOVO LEAD'**. Razão Social, Telefone, Contato e CNPJ são obrigatórios.
@@ -44,6 +22,25 @@ STATIC_KNOWLEDGE = {
     1. Clique no card do lead.
     2. Use os botões **'⬅️ Recuar'** ou **'➡️ Avançar'** no topo.
     3. Ao avançar, o Jarvis adiciona as novas tarefas daquela fase automaticamente!
+    """,
+
+    "aging": """
+    ⚠️ **O QUE É AGING (ENVELHECIMENTO)?**
+    O aging mede o tempo que um lead está parado em uma etapa. Se ele ficar mais de 5 dias sem movimentação, o Jarvis ativa o **Alerta Amarelo** no card.
+    """,
+
+    "alerta amarelo": """
+    ⚠️ **POR QUE O ALERTA AMARELO?**
+    O alerta ⚠️ (ESTAGNADO) aparece automaticamente quando um lead está na mesma etapa do Kanban há mais de **5 dias**.
+    
+    💡 **Dica do Jarvis:** Isso serve para sinalizar que o lead precisa de atenção imediata ou um novo follow-up para não esfriar a venda.
+    """,
+
+    "checklist": """
+    ✅ **SOBRE CHECKLISTS AUTOMÁTICOS:**
+    Cada etapa do processo tem tarefas padrão. O Jarvis insere essas tarefas assim que o lead chega na fase.
+    
+    💡 **Como usar:** Marque as tarefas como concluídas na aba 'Checklist' para ver o gráfico de progresso subir!
     """,
 
     "anexos": """
@@ -66,53 +63,59 @@ STATIC_KNOWLEDGE = {
     3. Para visualizar, clique em **'🔗 ABRIR'**.
     """,
 
-    "dashboard": """
-    📊 **SOBRE O DASHBOARD:**
-    O Dashboard mostra o desempenho do seu time e o volume do funil em tempo real.
-    
-    🚀 **COMO LER (TUTORIAL):**
-    1. **KPIs**: Resumo de vendas e novos leads no topo.
-    2. **Funil**: Onde os leads estão acumulados.
-    3. **SLA**: Tempo médio que o lead fica em cada etapa.
+    "relatorio": """
+    📊 **RELATÓRIOS EXCEL:**
+    Para extrair dados, vá ao 'Dashboard' e clique em **'📊 GERAR RELATÓRIO EXCEL'** na sidebar. 
+    O Jarvis criará um arquivo completo com Leads, Resumo de Etapas e Histórico.
     """,
-
-    "alerta amarelo": """
-    ⚠️ **POR QUE O ALERTA AMARELO?**
-    O alerta ⚠️ (ESTAGNADO) aparece automaticamente quando um lead está na mesma etapa do Kanban há mais de **5 dias**.
-    
-    💡 **Dica do Jarvis:** Isso serve para sinalizar que o lead precisa de atenção imediata ou um novo follow-up para não esfriar a venda.
-    """,
-
-    "aging": "O aging mede o tempo de permanência de um lead em uma fase. Se ultrapassar 5 dias, o Jarvis exibe o alerta ⚠️ amarelo no card.",
-
-    "checklist": """
-    ✅ **SOBRE CHECKLISTS AUTOMÁTICOS:**
-    Cada etapa do processo tem tarefas padrão. O Jarvis insere essas tarefas assim que o lead chega na fase.
-    
-    💡 **Como usar:** Marque as tarefas como concluídas na aba 'Checklist' para ver o gráfico de progresso subir!
-    """,
-
-    "relatorio": "Vá ao 'Dashboard' e clique em **'📊 GERAR RELATÓRIO EXCEL'** na sidebar para baixar todos os dados de leads e histórico.",
 
     "backup": "O Jarvis salva uma cópia completa do seu banco de dados todos os dias na pasta 'Backups' do Google Drive. Seus dados estão 100% protegidos.",
+
+    "tutorial": """
+    📖 **TUTORIAIS DISPONÍVEIS:**
+    - Digite **'tutorial cadastro'** para ver como registrar leads.
+    - Digite **'tutorial movimentação'** para ver como usar o funil.
+    - Digite **'tutorial arquivos'** para aprender sobre o Drive.
+    """,
+    
+    "ajuda": """
+    🌟 **EU POSSO TE AJUDAR COM:**
+    - **cadastro**: Como criar leads.
+    - **fluxo**: Como mover os cards.
+    - **alerta amarelo**: O que é o aviso ⚠️.
+    - **checklist**: Tarefas automáticas.
+    - **arquivos**: Como anexar documentos.
+    - **relatorio**: Como baixar o Excel.
+    - **backup**: Segurança dos dados.
+    """
 }
 
 def ask_jarvis(query):
-    query = query.lower().strip()
+    # Limpeza profunda da pergunta
+    query = query.lower().replace(":", "").replace("?", "").strip()
     
     # 1. Busca no Banco de Dados Dinâmico (Excel - Aprovado)
-    dynamic_kb = repository.get_active_knowledge()
-    for key, response in dynamic_kb.items():
-        if key in query:
-            return response
+    try:
+        dynamic_kb = repository.get_active_knowledge()
+        for key, response in dynamic_kb.items():
+            if key in query:
+                return response
+    except: pass
     
-    # 2. Busca na Base Fixa (Respostas + Tutoriais Integrados)
+    # 2. Busca na Base Fixa (Prioridade para termos exatos)
+    # Se o usuário digitar exatamente uma das chaves
+    if query in STATIC_KNOWLEDGE:
+        return STATIC_KNOWLEDGE[query]
+
+    # 3. Busca por correspondência parcial (se a palavra-chave estiver dentro da frase)
+    # Ordenamos pelas chaves mais longas primeiro para evitar que 'alerta' pegue o lugar de 'alerta amarelo'
+    sorted_keys = sorted(STATIC_KNOWLEDGE.keys(), key=len, reverse=True)
+    for key in sorted_keys:
+        if key in query:
+            return STATIC_KNOWLEDGE[key]
+    
+    # 4. Comandos de socorro
     if "ajuda" in query or "help" in query or "socorro" in query:
         return STATIC_KNOWLEDGE["ajuda"]
-    
-    # Busca por correspondência parcial nas palavras-chave
-    for key, response in STATIC_KNOWLEDGE.items():
-        if key in query:
-            return response
             
-    return "Hm, ainda estou aprendendo sobre isso. Tente digitar **'ajuda'** para ver meus comandos, ou pergunte sobre **'cadastro'**, **'alerta'** ou **'relatório'**."
+    return "Hm, ainda estou aprendendo sobre isso. Tente digitar apenas uma palavra como **'cadastro'**, **'alerta'** ou **'relatorio'**."
