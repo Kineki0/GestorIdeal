@@ -149,19 +149,23 @@ def _display_lead_details_modal(lead_id):
             # 2. Upload de Novo Arquivo
             if p['Etapa_Atual'] not in ['Ganhos', 'Perdidos']:
                 st.write("#### 📤 Subir novo arquivo")
-                # Usamos uma chave única que muda apenas quando queremos resetar o uploader
-                # Mas aqui, vamos apenas processar se o arquivo for novo
-                up_key = f"uploader_{lead_id}"
+                
+                # Técnica da Chave Dinâmica para resetar o uploader
+                if f"uploader_reset_{lead_id}" not in st.session_state:
+                    st.session_state[f"uploader_reset_{lead_id}"] = 0
+                
+                # A chave muda sempre que o contador aumenta, resetando o campo
+                up_key = f"uploader_{lead_id}_{st.session_state[f'uploader_reset_{lead_id}']}"
                 up = st.file_uploader("Selecione um arquivo para o Drive", key=up_key)
                 
                 if up:
-                    # Verifica se este arquivo já foi processado nesta "sentada" para evitar o loop
-                    if f"last_uploaded_{lead_id}" not in st.session_state or st.session_state[f"last_uploaded_{lead_id}"] != up.name:
-                        with st.status("Fazendo upload para o Drive..."):
-                            success = anexos_manager.attach_file('Lead', lead_id, p['Razao_Social'], up, "Anexo Operacional", auth_manager.get_user())
-                            if success:
-                                st.session_state[f"last_uploaded_{lead_id}"] = up.name
-                                st.rerun()
+                    with st.status("Fazendo upload para o Drive..."):
+                        success = anexos_manager.attach_file('Lead', lead_id, p['Razao_Social'], up, "Anexo Operacional", auth_manager.get_user())
+                        if success:
+                            # Incrementa o contador para mudar a chave e resetar o componente
+                            st.session_state[f"uploader_reset_{lead_id}"] += 1
+                            st.toast(f"✅ Arquivo {up.name} enviado com sucesso!")
+                            st.rerun()
             else: 
                 st.info("ℹ️ Leads em Ganhos ou Perdidos são finalizados e não permitem novos uploads.")
 
