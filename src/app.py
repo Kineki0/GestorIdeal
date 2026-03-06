@@ -3,7 +3,7 @@ import streamlit as st
 import pandas as pd
 import time
 from services import auth_manager
-from views import kanban_view, dashboard_view, calendar_view, admin_clientes_view, admin_servicos_view, admin_kanban_view, admin_jarvis_brain_view, floating_assistant
+from views import kanban_view, kanban_mobile_view, dashboard_view, calendar_view, admin_clientes_view, admin_servicos_view, admin_kanban_view, admin_jarvis_brain_view, floating_assistant
 from data import repository_excel as repository
 
 # --- Configuração da Página ---
@@ -48,7 +48,7 @@ def main():
         # Menu de navegação principal
         page = st.radio(
             "Navegação",
-            ["Kanban", "Dashboard", "Calendário"],
+            ["Kanban", "Kanban Mobile 📱", "Dashboard", "Calendário"],
             label_visibility="collapsed"
         )
         
@@ -79,6 +79,8 @@ def main():
     else:
         if page == "Kanban":
             kanban_view.display()
+        elif page == "Kanban Mobile 📱":
+            kanban_mobile_view.display()
         elif page == "Dashboard":
             dashboard_view.display()
         elif page == "Calendário":
