@@ -73,8 +73,18 @@ def _display_lead_details_modal(lead_id):
             st.session_state['show_fullscreen_details'] = False
             st.rerun()
 
-        # --- GESTÃO DE FLUXO (COM OPÇÃO DE VOLTAR) ---
-        st.write("### ⚙️ Movimentação de Etapa")
+        # --- ÁREA ADMINISTRATIVA ---
+        user_profile = auth_manager.get_user().get('Perfil', 'Usuário')
+        if user_profile == 'Admin':
+            with st.expander("⚠️ ÁREA ADMINISTRATIVA: EXCLUSÃO", expanded=False):
+                st.warning("Atenção: A exclusão é permanente e removerá todo o histórico e anexos.")
+                if st.button("🗑️ EXCLUIR ESTE LEAD PERMANENTEMENTE", type="secondary", use_container_width=True):
+                    repository.delete_lead(lead_id)
+                    st.session_state['show_fullscreen_details'] = False
+                    st.toast("🚨 Lead excluído do sistema.", icon="🗑️")
+                    st.rerun()
+        
+        st.divider()
         col_act1, col_act2, col_act3 = st.columns(3)
         stages = ETAPAS_KANBAN
         curr_idx = stages.index(p['Etapa_Atual'])

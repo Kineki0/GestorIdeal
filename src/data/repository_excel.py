@@ -291,6 +291,43 @@ def delete_anexo(anexo_id):
         return True
     return False
 
+def delete_lead(lead_id):
+    """Remove um lead, seu histórico e seus anexos do banco de dados."""
+    dfs = get_session_dfs()
+    
+    # Remove o lead
+    if 'Leads' in dfs:
+        dfs['Leads'] = dfs['Leads'][dfs['Leads']['ID_Lead'] != lead_id]
+        
+    # Remove o histórico vinculado
+    if 'Historico' in dfs:
+        dfs['Historico'] = dfs['Historico'][dfs['Historico']['ID_Lead'] != lead_id]
+        
+    # Remove os registros de anexos vinculados
+    if 'Anexos' in dfs:
+        dfs['Anexos'] = dfs['Anexos'][(dfs['Anexos']['Tipo_Referencia'] != 'Lead') | (dfs['Anexos']['ID_Referencia'] != lead_id)]
+        
+    commit_to_file()
+    return True
+
+def sync_kanban_stages(edited_df):
+    """Sincroniza as etapas do Kanban com as edições feitas no admin."""
+    dfs = get_session_dfs()
+    # Garante que a coluna 'Ordem' seja preenchida se houver novos registros
+    edited_df = edited_df.reset_index(drop=True)
+    edited_df['Ordem'] = edited_df.index
+    
+    # Gera novos IDs se necessário (registros com ID_Etapa vazio)
+    max_id = edited_df['ID_Etapa'].max() if not edited_df['ID_Etapa'].empty else 0
+    for idx, row in edited_df.iterrows():
+        if pd.isna(row['ID_Etapa']):
+            max_id += 1
+            edited_df.at[idx, 'ID_Etapa'] = max_id
+            
+    dfs['KanbanConfig'] = edited_df
+    commit_to_file()
+    return True
+
 def rename_kanban_stage(o, n): return False
 def remove_kanban_stage(n): return False
 def add_kanban_stage(n, o=0): return False
