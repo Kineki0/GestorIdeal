@@ -357,8 +357,8 @@ def display():
             
             /* LARGURA FIXA DAS COLUNAS (Para forçar o scroll) */
             [data-testid="column"] {
-                min-width: 1200px !important;
-                flex: 0 0 1200px !important;
+                min-width: 600px !important;
+                flex: 0 0 600px !important;
             }
         </style>
     """, unsafe_allow_html=True)
