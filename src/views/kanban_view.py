@@ -222,7 +222,7 @@ def display():
             
             /* Ajuste de largura mínima das colunas do Streamlit para o scroll horizontal */
             [data-testid="column"] {
-                min-width: 720px !important;
+                min-width: 1024px !important;
             }
         </style>
     """, unsafe_allow_html=True)
