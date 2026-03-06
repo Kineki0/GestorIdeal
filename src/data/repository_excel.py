@@ -8,7 +8,7 @@ import config
 import threading
 import json
 from datetime import datetime, timedelta
-from config import ETAPAS_KANBAN as DEFAULT_ETAPAS
+from config import ETAPAS_KANBAN as DEFAULT_ETAPAS, CHECKLIST_PADRAO
 import utils
 import secrets
 from googleapiclient.http import MediaIoBaseDownload
@@ -49,22 +49,46 @@ def _sync_worker():
         root_id = st.secrets["DRIVE_ROOT_FOLDER_ID"]
         service = drive_manager._get_drive_service()
         if not service: return
+        
+        # 1. Localiza o banco principal
         query = f"name='database.xlsx' and '{root_id}' in parents and trashed=false"
-        results = service.files().list(q=query, fields="files(id)").execute()
+        results = service.files().list(q=query, fields="files(id, modifiedTime)").execute()
         files = results.get('files', [])
+        
         if not os.path.exists(config.DATABASE_PATH): return
-        with open(config.DATABASE_PATH, 'rb') as f:
-            content = f.read()
+        with open(config.DATABASE_PATH, 'rb') as f: content = f.read()
+        
         class MockFile:
             def __init__(self, c): self.c = c
             def getvalue(self): return self.c
             @property
             def type(self): return "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            @property
+            def name(self): return "database.xlsx"
+            
         mock = MockFile(content)
+        
+        # 2. Sincroniza o arquivo principal
         if files:
             drive_manager.update_file(files[0]['id'], mock)
         else:
             drive_manager.upload_file(mock, "database.xlsx", root_id)
+            
+        # 3. LÓGICA DE BACKUP DIÁRIO (Snapshot)
+        # Verifica se o último backup na pasta de backups foi hoje
+        backups_folder_id = drive_manager.find_or_create_folder("Backups", root_id)
+        last_backup_query = f"'{backups_folder_id}' in parents and trashed=false"
+        last_backups = service.files().list(q=last_backup_query, orderBy="createdTime desc", pageSize=1, fields="files(name, createdTime)").execute()
+        
+        today_str = datetime.now().strftime("%Y%m%d")
+        needs_backup = True
+        if last_backups.get('files'):
+            last_date = last_backups['files'][0]['name']
+            if today_str in last_date: needs_backup = False
+            
+        if needs_backup:
+            drive_manager.create_backup_snapshot(mock)
+            
     except Exception: pass
 
 def _sync_to_drive_async():
@@ -180,12 +204,15 @@ def create_lead(data, user):
     new_id = (df['ID_Lead'].max() + 1) if not df.empty else 1
     now = datetime.now()
     
+    # --- ADICIONA TAREFAS PADRÃO DA ETAPA INICIAL (Leads) ---
+    initial_tasks = [{"task": t, "done": False} for t in CHECKLIST_PADRAO.get('Leads', [])]
+    
     new_row = {
         'ID_Lead': new_id, 'Razao_Social': data['Razao_Social'], 'Telefone': data['Telefone'],
         'Nome_Contato': data['Nome_Contato'], 'CNPJ': data['CNPJ'], 'Email': data.get('Email', ''),
         'Etapa_Atual': 'Leads', 'Status': 'Em dia', 'Prioridade': 'Média', 'Nucleo': 'Comercial',
         'Data_Criacao': now, 'Ultima_Atualizacao': now, 'Data_Entrada_Etapa': now,
-        'Descricao': '', 'Checklist': '[]'
+        'Descricao': '', 'Checklist': json.dumps(initial_tasks)
     }
     dfs['Leads'] = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
     _add_history(dfs, new_id, "Sistema", "Ação", "Lead", "N/A", "Criado", "Lead cadastrado no sistema")
@@ -200,6 +227,28 @@ def update_lead(lead_id, updates, user, comment="", is_comment=False):
     i = idx[0]
     
     tipo = "Comentário" if is_comment else "Ação"
+    
+    # --- LÓGICA DE AUTOMATIZAÇÃO DE CHECKLIST POR ETAPA ---
+    if 'Etapa_Atual' in updates:
+        nova_etapa = updates['Etapa_Atual']
+        if nova_etapa != df.at[i, 'Etapa_Atual']:
+            # Carrega checklist atual
+            try:
+                current_checklist = json.loads(df.at[i, 'Checklist']) if df.at[i, 'Checklist'] else []
+            except:
+                current_checklist = []
+            
+            # Pega nomes das tarefas que já existem
+            existing_task_names = [t['task'] for t in current_checklist]
+            
+            # Adiciona apenas tarefas que NÃO existem ainda
+            new_tasks = CHECKLIST_PADRAO.get(nova_etapa, [])
+            for nt in new_tasks:
+                if nt not in existing_task_names:
+                    current_checklist.append({"task": nt, "done": False})
+            
+            df.at[i, 'Checklist'] = json.dumps(current_checklist)
+            df.at[i, 'Data_Entrada_Etapa'] = datetime.now()
     
     for field, val in updates.items():
         if field in df.columns:

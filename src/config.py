@@ -31,3 +31,15 @@ INDICADORES_STATUS = {
     "Em dia": "🟢"
 }
 DIAS_ALERTA_PRAZO = 3
+
+# --- Automação de Checklist por Etapa ---
+CHECKLIST_PADRAO = {
+    "Leads": ["Coletar informações básicas", "Validar telefone e email", "Identificar tomador de decisão"],
+    "Em Progresso": ["Agendar primeira chamada", "Enviar apresentação da empresa", "Mapear dores do cliente"],
+    "Pendentes": ["Solicitar documentos", "Verificar pendências financeiras", "Analisar histórico de crédito"],
+    "Propostas": ["Elaborar orçamento", "Revisão técnica da proposta", "Enviar proposta por email"],
+    "Reuniões": ["Confirmar presença", "Preparar material de apresentação", "Definir ata de reunião"],
+    "Negociação": ["Ajustar valores", "Validar condições de pagamento", "Aprovação final com diretoria"],
+    "Ganhos": ["Enviar boas-vindas", "Assinatura do contrato", "Kick-off operacional"],
+    "Perdidos": ["Registrar motivo da perda", "Agendar follow-up futuro"]
+}

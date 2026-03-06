@@ -148,3 +148,23 @@ def update_file(file_id, file_object):
         updated_file = service.files().update(fileId=file_id, media_body=media, fields='id, webViewLink').execute()
         return {"id": updated_file.get("id"), "link": updated_file.get("webViewLink")}
     except Exception: return None
+
+def create_backup_snapshot(file_object):
+    """Cria uma cópia datada do banco de dados na pasta 'Backups' no Drive."""
+    service = _get_drive_service()
+    if not service: return None
+    try:
+        root_id = st.secrets["DRIVE_ROOT_FOLDER_ID"]
+        backups_folder_id = find_or_create_folder("Backups", root_id)
+        
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M")
+        backup_name = f"database_backup_{timestamp}.xlsx"
+        
+        media = MediaIoBaseUpload(io.BytesIO(file_object.getvalue()), mimetype=file_object.type, resumable=True)
+        service.files().create(
+            body={'name': backup_name, 'parents': [backups_folder_id]}, 
+            media_body=media, 
+            fields='id'
+        ).execute()
+        return True
+    except Exception: return False

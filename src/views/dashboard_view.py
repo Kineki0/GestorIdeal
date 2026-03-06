@@ -1,10 +1,28 @@
 # dashboard_view.py
 import streamlit as st
 import pandas as pd
+import io
 from datetime import datetime, timedelta
 import plotly.express as px
 from data import repository_excel as repository
 import config
+
+def _generate_report_excel(leads_df, historico_df):
+    """Gera um arquivo Excel consolidado com múltiplas abas."""
+    output = io.BytesIO()
+    with pd.ExcelWriter(output, engine='openpyxl') as writer:
+        # Aba 1: Leads Detalhados
+        leads_df.to_excel(writer, sheet_name='Leads_Detalhados', index=False)
+        
+        # Aba 2: Resumo por Etapa
+        etapas_resumo = leads_df['Etapa_Atual'].value_counts().reset_index()
+        etapas_resumo.columns = ['Etapa', 'Quantidade']
+        etapas_resumo.to_excel(writer, sheet_name='Resumo_Etapas', index=False)
+        
+        # Aba 3: Histórico de Ações
+        historico_df.to_excel(writer, sheet_name='Historico_Completo', index=False)
+        
+    return output.getvalue()
 
 def display():
     """
@@ -18,6 +36,21 @@ def display():
     except Exception as e:
         st.error(f"Ocorreu um erro ao carregar os dados: {e}")
         return
+
+    # --- SIDEBAR: EXPORTAÇÃO ---
+    st.sidebar.header("📥 Exportar Dados")
+    if not leads_df.empty:
+        excel_data = _generate_report_excel(leads_df, historico_df)
+        st.sidebar.download_button(
+            label="📊 GERAR RELATÓRIO EXCEL",
+            data=excel_data,
+            file_name=f"Relatorio_Jarvis_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            use_container_width=True
+        )
+        st.sidebar.write("💡 O relatório contém: Leads, Resumo de Etapas e Histórico Completo.")
+    
+    st.sidebar.divider()
 
     if leads_df.empty:
         st.warning("Não há dados de leads para gerar métricas.")

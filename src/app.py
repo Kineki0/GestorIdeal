@@ -2,7 +2,7 @@
 import streamlit as st
 import pandas as pd
 import time
-from services import auth_manager
+from services import auth_manager, assistant_manager
 from views import kanban_view, dashboard_view, calendar_view, admin_clientes_view, admin_servicos_view, admin_kanban_view
 from data import repository_excel as repository
 
@@ -66,6 +66,30 @@ def main():
         st.divider()
         # O botão manual foi removido conforme solicitado, agora é automático.
             
+        # --- ASSISTENTE JARVIS ---
+        st.subheader("🤖 Assistente Jarvis")
+        with st.expander("💬 Dúvida rápida?", expanded=False):
+            st.caption("Ex: 'como cadastrar?', 'aging', 'checklist'...")
+            
+            if "assistant_reset" not in st.session_state:
+                st.session_state.assistant_reset = 0
+            
+            q_key = f"jarvis_q_{st.session_state.assistant_reset}"
+            user_q = st.text_input("Sua dúvida:", key=q_key)
+            
+            if st.button("🚀 PERGUNTAR", use_container_width=True):
+                if user_q:
+                    res = assistant_manager.ask_jarvis(user_q)
+                    st.session_state.last_jarvis_res = res
+                    st.session_state.assistant_reset += 1
+                    st.rerun()
+            
+            if "last_jarvis_res" in st.session_state:
+                st.info(st.session_state.last_jarvis_res)
+                if st.button("Limpar resposta", type="secondary"):
+                    del st.session_state.last_jarvis_res
+                    st.rerun()
+
         if st.button("Logout", type="primary", use_container_width=True):
             auth_manager.logout()
 

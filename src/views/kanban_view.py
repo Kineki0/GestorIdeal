@@ -266,6 +266,15 @@ def _display_lead_details_modal(lead_id):
                     st.caption(f"🕒 {pd.to_datetime(r['Timestamp']).strftime('%d/%m %H:%M')} - Alterou {r['Campo']}")
 
 def display():
+    # --- SIDEBAR DE FILTROS ---
+    st.sidebar.header("🔍 Filtros Avançados")
+    search_query = st.sidebar.text_input("Buscar (Empresa ou CNPJ)", placeholder="Digite aqui...")
+    filter_nucleo = st.sidebar.multiselect("Filtrar por Núcleo", NUCLEOS)
+    filter_prioridade = st.sidebar.multiselect("Filtrar por Prioridade", TAGS_PRIORIDADE)
+    
+    st.sidebar.divider()
+    st.sidebar.write("💡 **Dica:** O sistema alerta com ⚠️ leads parados há mais de 5 dias na mesma fase.")
+
     st.markdown("""
         <style>
             /* REMOVER LIMITADORES DE LARGURA DA PÁGINA */
@@ -285,6 +294,11 @@ def display():
                 gap: 1.5rem !important; 
                 padding: 20px 10px !important;
                 width: 100% !important;
+            }
+            
+            /* Alerta de Aging (Borda e Animação Suave) */
+            .aging-alert {
+                border-left: 8px solid #ffcc00 !important;
             }
 
             /* Estilização da Barra de Rolagem */
@@ -364,6 +378,18 @@ def display():
 
     all_leads = repository.get_detailed_leads(sort_order)
     
+    # --- APLICAÇÃO DOS FILTROS ---
+    if search_query:
+        mask = all_leads['Razao_Social'].str.contains(search_query, case=False, na=False) | \
+               all_leads['CNPJ'].str.contains(search_query, na=False)
+        all_leads = all_leads[mask]
+    
+    if filter_nucleo:
+        all_leads = all_leads[all_leads['Nucleo'].isin(filter_nucleo)]
+    
+    if filter_prioridade:
+        all_leads = all_leads[all_leads['Prioridade'].isin(filter_prioridade)]
+    
     # Renderização das Colunas do Kanban
     cols = st.columns(len(ETAPAS_KANBAN))
     
@@ -379,20 +405,26 @@ def display():
                     st.caption("Nenhum item nesta etapa.")
                 
                 for _, p in etapa_leads.iterrows():
-                    dias = (datetime.now() - pd.to_datetime(p['Data_Entrada_Etapa'])).days if pd.notna(p.get('Data_Entrada_Etapa')) else 0
+                    # Lógica de Aging (SLA)
+                    dias_na_etapa = (datetime.now() - pd.to_datetime(p['Data_Entrada_Etapa'])).days if pd.notna(p.get('Data_Entrada_Etapa')) else 0
+                    is_stagnated = dias_na_etapa >= 5 and etapa not in ['Ganhos', 'Perdidos']
+                    
                     criado = pd.to_datetime(p['Data_Criacao']).strftime('%d/%m/%y') if pd.notna(p['Data_Criacao']) else "N/A"
                     retorno = pd.to_datetime(p['Prazo']).strftime('%d/%m/%y') if pd.notna(p['Prazo']) else "Sem data"
                     
+                    # Alerta visual no card
+                    aging_warning = " ⚠️ **ESTAGNADO**" if is_stagnated else ""
+                    
                     label_text = (
-                        f"🏢 **{p['Razao_Social']}**\n\n"
+                        f"🏢 **{p['Razao_Social']}**{aging_warning}\n\n"
                         f"📞 {p['Telefone']} | 👤 {p['Nome_Contato']}\n\n"
-                        f"📅 Cadastrado em: {criado} ({dias}d na fase)\n\n"
+                        f"📅 Cadastrado em: {criado} ({dias_na_etapa}d na fase)\n\n"
                         f"⏳ Próximo Retorno: {retorno}\n"
                         f"────────────────────\n"
                         f"💬 {p.get('Ultimo_Comentario', 'Sem notas')}"
                     )
                     
-                    # Card do Lead
+                    # Card do Lead (Aplica classe de aging se necessário)
                     if st.button(label_text, key=f"card_btn_{p['ID_Lead']}", use_container_width=True):
                         st.session_state['selected_lead_id'] = p['ID_Lead']
                         st.session_state['show_fullscreen_details'] = True
