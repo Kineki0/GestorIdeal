@@ -112,19 +112,61 @@ def _display_lead_details_modal(lead_id):
         with tab2:
             st.write("### ✅ Atividades Pendentes")
             items = json.loads(p['Checklist']) if p['Checklist'] and p['Checklist'] != "" else []
-            new_item = st.text_input("Adicionar nova tarefa...")
-            if st.button("Adicionar à Lista"):
-                items.append({"task": new_item, "done": False})
-                repository.update_lead(lead_id, {'Checklist': json.dumps(items)}, auth_manager.get_user())
-                st.rerun()
             
+            # --- 1. GRÁFICO DE PROGRESSO ---
+            if items:
+                done = sum(1 for item in items if item['done'])
+                pending = len(items) - done
+                
+                # Criando um DataFrame simples para o gráfico
+                df_chart = pd.DataFrame({
+                    "Status": ["Concluído", "Pendente"],
+                    "Quantidade": [done, pending]
+                })
+                
+                c1, c2 = st.columns([1, 2])
+                with c1:
+                    st.metric("Progresso Geral", f"{(done/len(items)*100):.0f}%")
+                    st.write(f"📊 {done} de {len(items)} tarefas concluídas")
+                with c2:
+                    # Cores customizadas: Azul para concluído, Cinza para pendente
+                    st.plotly_chart({
+                        "data": [{"labels": df_chart["Status"], "values": df_chart["Quantidade"], "type": "pie", "marker": {"colors": ["#004a99", "#e9ecef"]}, "hole": 0.4}],
+                        "layout": {"margin": {"t": 0, "b": 0, "l": 0, "r": 0}, "height": 200, "showlegend": True}
+                    }, use_container_width=True)
+                st.divider()
+
+            # --- 2. ADICIONAR NOVA TAREFA (Com Reset) ---
+            if f"chk_reset_{lead_id}" not in st.session_state:
+                st.session_state[f"chk_reset_{lead_id}"] = 0
+            
+            # Chave dinâmica para limpar o campo
+            chk_input_key = f"new_task_{lead_id}_{st.session_state[f'chk_reset_{lead_id}']}"
+            new_item = st.text_input("Adicionar nova tarefa...", key=chk_input_key)
+            
+            if st.button("Adicionar à Lista", use_container_width=True, type="primary"):
+                if new_item:
+                    items.append({"task": new_item, "done": False})
+                    repository.update_lead(lead_id, {'Checklist': json.dumps(items)}, auth_manager.get_user())
+                    st.session_state[f"chk_reset_{lead_id}"] += 1 # Muda a chave e limpa o texto
+                    st.rerun()
+                else:
+                    st.warning("⚠️ Digite uma tarefa antes de adicionar.")
+            
+            st.write("---")
+            
+            # --- 3. LISTAGEM DOS ITENS ---
             for i, item in enumerate(items):
                 col_c, col_t = st.columns([0.1, 0.9])
+                # Se clicar no checkbox, atualiza o status e o gráfico muda automaticamente
                 if col_c.checkbox("", value=item['done'], key=f"chk_{lead_id}_{i}") != item['done']:
                     items[i]['done'] = not item['done']
                     repository.update_lead(lead_id, {'Checklist': json.dumps(items)}, auth_manager.get_user())
                     st.rerun()
-                col_t.write(item['task'])
+                
+                # Texto riscado se estiver concluído
+                label = f"~~{item['task']}~~" if item['done'] else item['task']
+                col_t.markdown(label)
 
         with tab3:
             st.write("### 📂 Gestão de Documentos")
