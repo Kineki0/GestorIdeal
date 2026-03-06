@@ -114,7 +114,8 @@ def _load_database_from_file():
             'Anexos': pd.DataFrame({'ID_Anexo': [], 'Tipo_Referencia': [], 'ID_Referencia': [], 'Nome_Arquivo': [], 'Link_Drive': [], 'Usuario_Envio': [], 'Data_Envio': []}),
             'Logs': pd.DataFrame({'Timestamp': [], 'Nivel': [], 'Mensagem': []}),
             'PasswordResetTokens': pd.DataFrame({'Token': [], 'Email': [], 'ExpiresAt': [], 'Used': []}),
-            'KanbanConfig': pd.DataFrame({'ID_Etapa': [i+1 for i in range(len(DEFAULT_ETAPAS))], 'Nome_Etapa': DEFAULT_ETAPAS, 'Ordem': [i for i in range(len(DEFAULT_ETAPAS))]})
+            'KanbanConfig': pd.DataFrame({'ID_Etapa': [i+1 for i in range(len(DEFAULT_ETAPAS))], 'Nome_Etapa': DEFAULT_ETAPAS, 'Ordem': [i for i in range(len(DEFAULT_ETAPAS))]}),
+            'Jarvis_Brain': pd.DataFrame({'ID_Conhecimento': [], 'Palavra_Chave': [], 'Resposta': [], 'Status': [], 'Usuario_Sugeriu': [], 'Data_Criacao': []})
         }
         os.makedirs(os.path.dirname(config.DATABASE_PATH), exist_ok=True)
         with pd.ExcelWriter(config.DATABASE_PATH, engine='openpyxl') as writer:
@@ -126,25 +127,14 @@ def _load_database_from_file():
         with excel_lock:
             dfs = pd.read_excel(config.DATABASE_PATH, sheet_name=None)
             
-            # 1. Garantir colunas esperadas nos Leads
-            if 'Leads' in dfs:
-                for col in expected_lead_columns:
-                    if col not in dfs['Leads'].columns: dfs['Leads'][col] = ""
-            
-            # 2. Garantir colunas esperadas no Histórico (Evita KeyError: 'Tipo')
-            expected_hist_columns = ['ID_Historico', 'ID_Lead', 'Timestamp', 'Usuario', 'Tipo', 'Campo', 'Antigo', 'Novo', 'Mensagem']
-            if 'Historico' in dfs:
-                for col in expected_hist_columns:
-                    if col not in dfs['Historico'].columns: dfs['Historico'][col] = ""
-            
-            # 3. Garantir existência de todas as abas
-            required_sheets = ['Usuarios', 'Leads', 'Historico', 'Anexos', 'Logs', 'PasswordResetTokens', 'KanbanConfig']
+            # Garantir existência de todas as abas
+            required_sheets = ['Usuarios', 'Leads', 'Historico', 'Anexos', 'Logs', 'PasswordResetTokens', 'KanbanConfig', 'Jarvis_Brain']
             for sheet in required_sheets:
                 if sheet not in dfs:
-                    if sheet == 'Logs':
+                    if sheet == 'Jarvis_Brain':
+                        dfs[sheet] = pd.DataFrame({'ID_Conhecimento': [], 'Palavra_Chave': [], 'Resposta': [], 'Status': [], 'Usuario_Sugeriu': [], 'Data_Criacao': []})
+                    elif sheet == 'Logs':
                         dfs[sheet] = pd.DataFrame({'Timestamp': [], 'Nivel': [], 'Mensagem': []})
-                    elif sheet == 'PasswordResetTokens':
-                        dfs[sheet] = pd.DataFrame({'Token': [], 'Email': [], 'ExpiresAt': [], 'Used': []})
                     else:
                         dfs[sheet] = pd.DataFrame()
             return dfs
@@ -411,5 +401,38 @@ def invalidate_password_reset_token(token):
     dfs = get_session_dfs()
     df = dfs['PasswordResetTokens']
     df.loc[df['Token'] == token, 'Used'] = True
+    commit_to_file()
+    return True
+
+# --- FUNÇÕES DO CÉREBRO DO JARVIS ---
+
+def suggest_knowledge(palavra_chave, resposta, usuario):
+    """Registra uma sugestão de conhecimento para aprovação posterior."""
+    dfs = get_session_dfs()
+    df = dfs['Jarvis_Brain']
+    new_id = (df['ID_Conhecimento'].max() + 1) if not df.empty else 1
+    new_row = {
+        'ID_Conhecimento': new_id, 
+        'Palavra_Chave': palavra_chave.lower().strip(), 
+        'Resposta': resposta, 
+        'Status': 'Pendente', 
+        'Usuario_Sugeriu': usuario, 
+        'Data_Criacao': datetime.now()
+    }
+    dfs['Jarvis_Brain'] = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
+    commit_to_file()
+    return True
+
+def get_active_knowledge():
+    """Retorna todo o conhecimento aprovado em formato de dicionário."""
+    df = get_all('Jarvis_Brain')
+    if df.empty: return {}
+    approved = df[df['Status'] == 'Aprovado']
+    return dict(zip(approved['Palavra_Chave'], approved['Resposta']))
+
+def sync_knowledge_base(edited_df):
+    """Sincroniza o cérebro do Jarvis com as edições do Admin."""
+    dfs = get_session_dfs()
+    dfs['Jarvis_Brain'] = edited_df
     commit_to_file()
     return True

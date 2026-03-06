@@ -3,7 +3,7 @@ import streamlit as st
 import pandas as pd
 import time
 from services import auth_manager, assistant_manager
-from views import kanban_view, dashboard_view, calendar_view, admin_clientes_view, admin_servicos_view, admin_kanban_view
+from views import kanban_view, dashboard_view, calendar_view, admin_clientes_view, admin_servicos_view, admin_kanban_view, admin_jarvis_brain_view
 from data import repository_excel as repository
 
 # --- Configuração da Página ---
@@ -59,7 +59,7 @@ def main():
             st.subheader("Administração")
             admin_page = st.radio(
                 "Admin",
-                ["Nenhum", "Gerenciar Clientes", "Gerenciar Serviços", "Gerenciar Kanban"],
+                ["Nenhum", "Gerenciar Clientes", "Gerenciar Serviços", "Gerenciar Kanban", "Treinar Jarvis"],
                 label_visibility="collapsed"
             )
 
@@ -69,16 +69,29 @@ def main():
         # --- ASSISTENTE JARVIS ---
         st.subheader("🤖 Assistente Jarvis")
         with st.expander("💬 Dúvida rápida?", expanded=False):
-            st.caption("Ex: 'como cadastrar?', 'aging', 'checklist'...")
+            # Botões de atalho rápido
+            c1, c2 = st.columns(2)
+            if c1.button("❓ Ajuda", use_container_width=True):
+                st.session_state.last_jarvis_res = assistant_manager.ask_jarvis("ajuda")
+                st.rerun()
+            if c2.button("📖 Tutoriais", use_container_width=True):
+                st.session_state.last_jarvis_res = assistant_manager.ask_jarvis("tutorial")
+                st.rerun()
+            if st.button("⚠️ Por que o alerta amarela?", use_container_width=True):
+                st.session_state.last_jarvis_res = assistant_manager.ask_jarvis("aging")
+                st.rerun()
+            
+            st.divider()
             
             if "assistant_reset" not in st.session_state:
                 st.session_state.assistant_reset = 0
             
             q_key = f"jarvis_q_{st.session_state.assistant_reset}"
-            user_q = st.text_input("Sua dúvida:", key=q_key)
+            user_q = st.text_input("Ou digite sua dúvida:", key=q_key)
             
             if st.button("🚀 PERGUNTAR", use_container_width=True):
                 if user_q:
+                    st.session_state.last_query = user_q # Salva a pergunta
                     res = assistant_manager.ask_jarvis(user_q)
                     st.session_state.last_jarvis_res = res
                     st.session_state.assistant_reset += 1
@@ -86,8 +99,36 @@ def main():
             
             if "last_jarvis_res" in st.session_state:
                 st.info(st.session_state.last_jarvis_res)
-                if st.button("Limpar resposta", type="secondary"):
+                
+                # MECANISMO DE FEEDBACK
+                st.write("Essa resposta ajudou?")
+                fb_col1, fb_col2, fb_col3 = st.columns([1, 1, 2])
+                
+                if fb_col1.button("👍 Sim", key="fb_yes"):
+                    st.toast("Obrigado! Fico feliz em ajudar.", icon="😊")
                     del st.session_state.last_jarvis_res
+                    st.rerun()
+                
+                if fb_col2.button("👎 Não", key="fb_no"):
+                    st.session_state.show_suggestion_field = True
+                
+                if st.session_state.get("show_suggestion_field"):
+                    st.write("---")
+                    st.caption("Como eu deveria ter respondido?")
+                    suggestion = st.text_area("Sua sugestão de resposta:", key="sug_text")
+                    if st.button("Enviar Sugestão", use_container_width=True):
+                        if suggestion:
+                            # Tenta extrair uma palavra-chave da última pergunta
+                            repository.suggest_knowledge(st.session_state.get("last_query", "geral"), suggestion, user['Nome'])
+                            st.success("Obrigado! Minha equipe vai analisar sua sugestão.")
+                            time.sleep(2)
+                            del st.session_state.last_jarvis_res
+                            st.session_state.show_suggestion_field = False
+                            st.rerun()
+
+                if fb_col3.button("Limpar", type="secondary"):
+                    del st.session_state.last_jarvis_res
+                    if "show_suggestion_field" in st.session_state: del st.session_state.show_suggestion_field
                     st.rerun()
 
         if st.button("Logout", type="primary", use_container_width=True):
@@ -101,6 +142,8 @@ def main():
             admin_servicos_view.display()
         elif admin_page == "Gerenciar Kanban":
             admin_kanban_view.display()
+        elif admin_page == "Treinar Jarvis":
+            admin_jarvis_brain_view.display()
     else:
         if page == "Kanban":
             kanban_view.display()

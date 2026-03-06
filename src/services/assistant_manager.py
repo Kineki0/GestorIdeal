@@ -1,32 +1,85 @@
 # assistant_manager.py
-import re
 
-# Base de Conhecimento do Jarvis (FAQ Pré-programada)
-KNOWLEDGE_BASE = {
-    "cadastro": "Para cadastrar um novo lead, clique no botão '＋ NOVO LEAD' no topo do Kanban. Lembre-se: Telefone (8-11 dígitos), CNPJ (14 dígitos) e Razão Social são obrigatórios.",
-    "cnpj": "O CNPJ deve conter exatamente 14 números. O sistema limpa automaticamente pontos e traços, mas a quantidade de dígitos deve estar correta.",
-    "telefone": "O telefone aceita de 8 a 11 dígitos. Você pode digitar com ou sem DDD. O sistema formatará automaticamente para o banco de dados.",
-    "alerta": "O ícone ⚠️ (ESTAGNADO) aparece nos cards que estão na mesma etapa há mais de 5 dias. É um sinal para o comercial dar atenção prioritária a esse lead.",
-    "aging": "O aging (envelhecimento) mede quantos dias o lead está na fase atual. Se passar de 5 dias, o Jarvis aciona um alerta visual no card.",
-    "checklist": "As tarefas do checklist são automáticas! Ao mover um lead para uma nova etapa, as tarefas padrão daquela fase são adicionadas sem apagar as anteriores.",
-    "relatorio": "Para gerar um relatório Excel, vá até a página 'Dashboard' e use o botão '📊 GERAR RELATÓRIO EXCEL' na barra lateral esquerda.",
-    "backup": "O Jarvis faz backups automáticos diários para a pasta 'Backups' no seu Google Drive. Você não precisa se preocupar com a perda de dados!",
-    "drive": "Todos os anexos são salvos no Google Drive em uma estrutura organizada por Ano > Mês > Categoria > ID do Lead.",
-    "excluir": "A exclusão de leads e anexos é permitida apenas para usuários com perfil 'Admin'. Usuários comuns não podem deletar registros por segurança.",
-    "mover": "Você pode mover um lead abrindo os detalhes do card e usando os botões 'Avançar' ou 'Recuar'. Isso disparará automaticamente o novo checklist da fase.",
-    "venda": "Ao concluir uma negociação, use o botão '🏆 GANHO' nos detalhes do lead. Isso moverá o card para a coluna de Ganhos e gerará métricas no Dashboard."
+from data import repository_excel as repository
+
+# Base de Conhecimento Fixa (Tutoriais e Sistema)
+STATIC_KNOWLEDGE = {
+    "ajuda": """
+    🌟 **Eu posso te ajudar com os seguintes temas:**
+    - **cadastro**: Como criar novos leads corretamente.
+    - **fluxo**: Entenda as etapas do Kanban.
+    - **aging**: O que significa o alerta de atraso ⚠️.
+    - **checklist**: Como as tarefas automáticas funcionam.
+    - **anexos**: Como enviar e gerenciar arquivos.
+    - **relatorio**: Como exportar dados para o Excel.
+    - **backup**: Segurança dos seus dados.
+    - **tutorial**: Lista de guias passo a passo disponíveis.
+    
+    *Digite o nome do tema ou uma pergunta sobre ele!*
+    """,
+    
+    "tutorial": """
+    📖 **Tutoriais Disponíveis:**
+    1. **Tutorial Cadastro**: Passo a passo do registro inicial.
+    2. **Tutorial Movimentação**: Como avançar um lead no funil.
+    3. **Tutorial Arquivos**: Como subir e deletar documentos no Drive.
+    4. **Tutorial Dashboard**: Como ler os gráficos de performance.
+    
+    *Diga: 'quero o tutorial de cadastro' para começar.*
+    """,
+
+    "tutorial cadastro": """
+    🚀 **PASSO A PASSO: CADASTRO DE LEAD**
+    1. Clique no botão azul **'＋ NOVO LEAD'** no topo do Kanban.
+    2. Insira a **Razão Social** (Nome da Empresa).
+    3. Digite o **Telefone** (O sistema aceita de 8 a 11 dígitos).
+    4. Digite o **CNPJ** (Apenas os 14 números, sem pontos).
+    5. Clique em **'CADASTRAR'**.
+    ✅ O lead aparecerá na primeira coluna e o Jarvis criará o primeiro checklist automaticamente!
+    """,
+
+    "tutorial movimentação": """
+    🔄 **COMO MOVER UM LEAD NO FUNIL**
+    1. Localize o card no Kanban e **clique nele**.
+    2. No topo da janela que abriu, você verá os botões **'⬅️ Recuar'** ou **'➡️ Avançar'**.
+    3. Ao clicar em Avançar, o Jarvis:
+       - Move o card para a próxima coluna.
+       - Registra a data da mudança no histórico.
+       - **Adiciona novas tarefas** ao checklist daquela etapa.
+    4. Se a venda fechar, use o botão **'🏆 GANHO'**.
+    """,
+
+    "tutorial arquivos": """
+    📂 **GESTÃO DE DOCUMENTOS NO DRIVE**
+    1. Abra o card do lead e vá na aba **'📂 Arquivos'**.
+    2. Clique em **'Browse files'** e escolha seu arquivo (PDF, Imagem, Excel, etc).
+    3. O Jarvis enviará para a pasta correta no Google Drive automaticamente.
+    4. Para abrir, clique no botão azul **'🔗 ABRIR'**.
+    5. Se enviou errado, clique no botão **'🗑️ EXCLUIR'** para remover do banco de dados.
+    """,
 }
 
 def ask_jarvis(query):
-    """
-    Processa a pergunta do usuário e retorna a melhor resposta da base de conhecimento.
-    Usa busca por palavras-chave simples.
-    """
-    query = query.lower()
+    query = query.lower().strip()
     
-    # Busca por correspondência de palavras-chave
-    for key, response in KNOWLEDGE_BASE.items():
+    # 1. Busca no Banco de Dados Dinâmico (Excel - Aprovado)
+    dynamic_kb = repository.get_active_knowledge()
+    for key, response in dynamic_kb.items():
+        if key in query:
+            return response
+    
+    # 2. Busca na Base Fixa (Tutoriais)
+    if "ajuda" in query or "help" in query or "socorro" in query:
+        return STATIC_KNOWLEDGE["ajuda"]
+    
+    if "tutorial" in query:
+        for key in STATIC_KNOWLEDGE:
+            if key in query and key != "tutorial":
+                return STATIC_KNOWLEDGE[key]
+        return STATIC_KNOWLEDGE["tutorial"]
+
+    for key, response in STATIC_KNOWLEDGE.items():
         if key in query:
             return response
             
-    return "Desculpe, ainda não tenho essa informação na minha base de conhecimento. Tente perguntar sobre 'cadastro', 'alerta', 'checklist' ou 'relatórios'."
+    return "Hm, ainda estou aprendendo sobre isso. Tente digitar **'ajuda'** ou pergunte de outra forma!"
