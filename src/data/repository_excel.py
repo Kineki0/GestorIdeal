@@ -282,6 +282,15 @@ def get_anexos_by_referencia(tipo, rid):
     if df.empty: return pd.DataFrame()
     return df[(df['Tipo_Referencia'] == tipo) & (df['ID_Referencia'] == rid)]
 
+def delete_anexo(anexo_id):
+    """Remove um registro de anexo do Excel."""
+    dfs = get_session_dfs()
+    if 'Anexos' in dfs:
+        dfs['Anexos'] = dfs['Anexos'][dfs['Anexos']['ID_Anexo'] != anexo_id]
+        commit_to_file()
+        return True
+    return False
+
 def rename_kanban_stage(o, n): return False
 def remove_kanban_stage(n): return False
 def add_kanban_stage(n, o=0): return False

@@ -127,13 +127,43 @@ def _display_lead_details_modal(lead_id):
                 col_t.write(item['task'])
 
         with tab3:
+            st.write("### 📂 Gestão de Documentos")
+            
+            # 1. Listagem de Arquivos Existentes
+            anexos = repository.get_anexos_by_referencia('Lead', lead_id)
+            if not anexos.empty:
+                for _, a in anexos.iterrows():
+                    with st.container(border=True):
+                        c_icon, c_info, c_link, c_del = st.columns([1, 5, 2, 2])
+                        c_icon.write("📄")
+                        c_info.write(f"**{a['Nome_Arquivo']}**\n\n🕒 {pd.to_datetime(a['Data_Envio']).strftime('%d/%m/%y %H:%M')} | 👤 {a['Usuario_Envio']}")
+                        c_link.link_button("🔗 ABRIR", a['Link_Drive'], use_container_width=True)
+                        if c_del.button("🗑️ EXCLUIR", key=f"del_anexo_{a['ID_Anexo']}", type="secondary", use_container_width=True):
+                            repository.delete_anexo(a['ID_Anexo'])
+                            st.rerun()
+            else:
+                st.info("Nenhum arquivo anexado a este lead ainda.")
+
+            st.divider()
+
+            # 2. Upload de Novo Arquivo
             if p['Etapa_Atual'] not in ['Ganhos', 'Perdidos']:
-                st.write("### 📂 Gestão de Documentos")
-                up = st.file_uploader("Subir novo arquivo para o Drive", key=f"up_{lead_id}")
+                st.write("#### 📤 Subir novo arquivo")
+                # Usamos uma chave única que muda apenas quando queremos resetar o uploader
+                # Mas aqui, vamos apenas processar se o arquivo for novo
+                up_key = f"uploader_{lead_id}"
+                up = st.file_uploader("Selecione um arquivo para o Drive", key=up_key)
+                
                 if up:
-                    anexos_manager.attach_file('Lead', lead_id, p['Razao_Social'], up, "Anexo Operacional", auth_manager.get_user())
-                    st.rerun()
-            else: st.info("ℹ️ Arquivos não são obrigatórios para leads em Ganhos ou Perdidos.")
+                    # Verifica se este arquivo já foi processado nesta "sentada" para evitar o loop
+                    if f"last_uploaded_{lead_id}" not in st.session_state or st.session_state[f"last_uploaded_{lead_id}"] != up.name:
+                        with st.status("Fazendo upload para o Drive..."):
+                            success = anexos_manager.attach_file('Lead', lead_id, p['Razao_Social'], up, "Anexo Operacional", auth_manager.get_user())
+                            if success:
+                                st.session_state[f"last_uploaded_{lead_id}"] = up.name
+                                st.rerun()
+            else: 
+                st.info("ℹ️ Leads em Ganhos ou Perdidos são finalizados e não permitem novos uploads.")
 
         with tab4:
             st.write("### 💬 Central de Notas (Data + Usuário)")
