@@ -107,6 +107,7 @@ def _display_lead_details_modal(lead_id):
                     'Nucleo': new_nucleo, 'Prioridade': new_prio, 'Risco': new_risco,
                     'Esforco': new_esforco, 'Prazo': new_prazo, 'Descricao': new_desc
                 }, auth_manager.get_user())
+                st.session_state['show_fullscreen_details'] = False # Fecha o modal
                 st.rerun()
 
         with tab2:
