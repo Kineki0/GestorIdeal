@@ -40,15 +40,22 @@ def main():
         st.session_state.last_auto_save = current_time
         st.toast("💾 Alterações salvas automaticamente!", icon="✅")
 
+    # --- Detecção de Dispositivo (Mobile vs Desktop) ---
+    user_agent = st.context.headers.get("User-Agent", "")
+    is_mobile = any(x in user_agent for x in ["Android", "iPhone", "iPad"])
+
     with st.sidebar:
         st.subheader(f"Bem-vindo(a), {user['Nome'].split(' ')[0]}!")
         st.write(f"Perfil: **{user['Perfil']}**")
         st.divider()
 
-        # Menu de navegação principal
+        # Menu de navegação dinâmico baseado no dispositivo
+        nav_options = ["Kanban Mobile 📱"] if is_mobile else ["Kanban"]
+        nav_options += ["Dashboard", "Calendário"]
+
         page = st.radio(
             "Navegação",
-            ["Kanban", "Kanban Mobile 📱", "Dashboard", "Calendário"],
+            nav_options,
             label_visibility="collapsed"
         )
         
