@@ -241,8 +241,8 @@ def display():
             
             /* LARGURA FIXA DAS COLUNAS PARA FORÇAR O SCROLL */
             [data-testid="column"] {
-                min-width: 1024px !important;
-                flex: 0 0 1024px !important;
+                min-width: 1200px !important;
+                flex: 0 0 1200px !important;
             }
 
             /* Ajuste para evitar que o conteúdo principal do Streamlit limite a largura */
