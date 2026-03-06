@@ -1,18 +1,17 @@
 # assistant_manager.py
-
 from data import repository_excel as repository
 
-# Base de Conhecimento Fixa (Tutoriais e Sistema)
+# Base de Conhecimento Fixa (Respostas + Tutoriais Integrados)
 STATIC_KNOWLEDGE = {
     "ajuda": """
     🌟 **Eu posso te ajudar com os seguintes temas:**
     - **cadastro**: Como criar novos leads corretamente.
     - **fluxo**: Entenda as etapas do Kanban.
-    - **aging**: O que significa o alerta de atraso ⚠️.
+    - **aging / alerta amarelo**: O que significa o aviso de atraso ⚠️.
     - **checklist**: Como as tarefas automáticas funcionam.
-    - **anexos**: Como enviar e gerenciar arquivos.
+    - **anexos / arquivos**: Como enviar e gerenciar documentos.
     - **relatorio**: Como exportar dados para o Excel.
-    - **backup**: Segurança dos seus dados.
+    - **backup**: Segurança e snapshots dos seus dados.
     - **tutorial**: Lista de guias passo a passo disponíveis.
     
     *Digite o nome do tema ou uma pergunta sobre ele!*
@@ -24,39 +23,78 @@ STATIC_KNOWLEDGE = {
     2. **Tutorial Movimentação**: Como avançar um lead no funil.
     3. **Tutorial Arquivos**: Como subir e deletar documentos no Drive.
     4. **Tutorial Dashboard**: Como ler os gráficos de performance.
+    """,
+
+    "cadastro": """
+    📝 **SOBRE CADASTRO DE LEADS:**
+    Para cadastrar um novo lead, use o botão azul **'＋ NOVO LEAD'**. Razão Social, Telefone, Contato e CNPJ são obrigatórios.
     
-    *Diga: 'quero o tutorial de cadastro' para começar.*
+    🚀 **PASSO A PASSO (TUTORIAL):**
+    1. Clique em **'＋ NOVO LEAD'** no topo do Kanban.
+    2. Insira os dados (Telefone: 8-11 dígitos | CNPJ: 14 dígitos).
+    3. Clique em **'CADASTRAR'**.
+    ✅ O lead aparecerá na primeira coluna com o checklist inicial!
     """,
 
-    "tutorial cadastro": """
-    🚀 **PASSO A PASSO: CADASTRO DE LEAD**
-    1. Clique no botão azul **'＋ NOVO LEAD'** no topo do Kanban.
-    2. Insira a **Razão Social** (Nome da Empresa).
-    3. Digite o **Telefone** (O sistema aceita de 8 a 11 dígitos).
-    4. Digite o **CNPJ** (Apenas os 14 números, sem pontos).
-    5. Clique em **'CADASTRAR'**.
-    ✅ O lead aparecerá na primeira coluna e o Jarvis criará o primeiro checklist automaticamente!
+    "fluxo": """
+    🔄 **SOBRE O FLUXO (MOVIMENTAÇÃO):**
+    O lead entra em 'Leads' e deve avançar até 'Ganhos'. Mover o lead atualiza o histórico e as tarefas.
+    
+    🚀 **PASSO A PASSO (TUTORIAL):**
+    1. Clique no card do lead.
+    2. Use os botões **'⬅️ Recuar'** ou **'➡️ Avançar'** no topo.
+    3. Ao avançar, o Jarvis adiciona as novas tarefas daquela fase automaticamente!
     """,
 
-    "tutorial movimentação": """
-    🔄 **COMO MOVER UM LEAD NO FUNIL**
-    1. Localize o card no Kanban e **clique nele**.
-    2. No topo da janela que abriu, você verá os botões **'⬅️ Recuar'** ou **'➡️ Avançar'**.
-    3. Ao clicar em Avançar, o Jarvis:
-       - Move o card para a próxima coluna.
-       - Registra a data da mudança no histórico.
-       - **Adiciona novas tarefas** ao checklist daquela etapa.
-    4. Se a venda fechar, use o botão **'🏆 GANHO'**.
-    """,
-
-    "tutorial arquivos": """
-    📂 **GESTÃO DE DOCUMENTOS NO DRIVE**
+    "anexos": """
+    📂 **SOBRE ARQUIVOS E DOCUMENTOS:**
+    Todos os arquivos são salvos de forma organizada no seu Google Drive.
+    
+    🚀 **PASSO A PASSO (TUTORIAL):**
     1. Abra o card do lead e vá na aba **'📂 Arquivos'**.
-    2. Clique em **'Browse files'** e escolha seu arquivo (PDF, Imagem, Excel, etc).
-    3. O Jarvis enviará para a pasta correta no Google Drive automaticamente.
-    4. Para abrir, clique no botão azul **'🔗 ABRIR'**.
-    5. Se enviou errado, clique no botão **'🗑️ EXCLUIR'** para remover do banco de dados.
+    2. Selecione o arquivo no botão de upload.
+    3. Para visualizar, clique em **'🔗 ABRIR'**.
     """,
+
+    "arquivos": """
+    📂 **SOBRE ARQUIVOS E DOCUMENTOS:**
+    Todos os arquivos são salvos de forma organizada no seu Google Drive.
+    
+    🚀 **PASSO A PASSO (TUTORIAL):**
+    1. Abra o card do lead e vá na aba **'📂 Arquivos'**.
+    2. Selecione o arquivo no botão de upload.
+    3. Para visualizar, clique em **'🔗 ABRIR'**.
+    """,
+
+    "dashboard": """
+    📊 **SOBRE O DASHBOARD:**
+    O Dashboard mostra o desempenho do seu time e o volume do funil em tempo real.
+    
+    🚀 **COMO LER (TUTORIAL):**
+    1. **KPIs**: Resumo de vendas e novos leads no topo.
+    2. **Funil**: Onde os leads estão acumulados.
+    3. **SLA**: Tempo médio que o lead fica em cada etapa.
+    """,
+
+    "alerta amarelo": """
+    ⚠️ **POR QUE O ALERTA AMARELO?**
+    O alerta ⚠️ (ESTAGNADO) aparece automaticamente quando um lead está na mesma etapa do Kanban há mais de **5 dias**.
+    
+    💡 **Dica do Jarvis:** Isso serve para sinalizar que o lead precisa de atenção imediata ou um novo follow-up para não esfriar a venda.
+    """,
+
+    "aging": "O aging mede o tempo de permanência de um lead em uma fase. Se ultrapassar 5 dias, o Jarvis exibe o alerta ⚠️ amarelo no card.",
+
+    "checklist": """
+    ✅ **SOBRE CHECKLISTS AUTOMÁTICOS:**
+    Cada etapa do processo tem tarefas padrão. O Jarvis insere essas tarefas assim que o lead chega na fase.
+    
+    💡 **Como usar:** Marque as tarefas como concluídas na aba 'Checklist' para ver o gráfico de progresso subir!
+    """,
+
+    "relatorio": "Vá ao 'Dashboard' e clique em **'📊 GERAR RELATÓRIO EXCEL'** na sidebar para baixar todos os dados de leads e histórico.",
+
+    "backup": "O Jarvis salva uma cópia completa do seu banco de dados todos os dias na pasta 'Backups' do Google Drive. Seus dados estão 100% protegidos.",
 }
 
 def ask_jarvis(query):
@@ -68,18 +106,13 @@ def ask_jarvis(query):
         if key in query:
             return response
     
-    # 2. Busca na Base Fixa (Tutoriais)
+    # 2. Busca na Base Fixa (Respostas + Tutoriais Integrados)
     if "ajuda" in query or "help" in query or "socorro" in query:
         return STATIC_KNOWLEDGE["ajuda"]
     
-    if "tutorial" in query:
-        for key in STATIC_KNOWLEDGE:
-            if key in query and key != "tutorial":
-                return STATIC_KNOWLEDGE[key]
-        return STATIC_KNOWLEDGE["tutorial"]
-
+    # Busca por correspondência parcial nas palavras-chave
     for key, response in STATIC_KNOWLEDGE.items():
         if key in query:
             return response
             
-    return "Hm, ainda estou aprendendo sobre isso. Tente digitar **'ajuda'** ou pergunte de outra forma!"
+    return "Hm, ainda estou aprendendo sobre isso. Tente digitar **'ajuda'** para ver meus comandos, ou pergunte sobre **'cadastro'**, **'alerta'** ou **'relatório'**."

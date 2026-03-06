@@ -77,8 +77,8 @@ def main():
             if c2.button("📖 Tutoriais", use_container_width=True):
                 st.session_state.last_jarvis_res = assistant_manager.ask_jarvis("tutorial")
                 st.rerun()
-            if st.button("⚠️ Por que o alerta amarela?", use_container_width=True):
-                st.session_state.last_jarvis_res = assistant_manager.ask_jarvis("aging")
+            if st.button("⚠️ Por que o alerta amarelo?", use_container_width=True):
+                st.session_state.last_jarvis_res = assistant_manager.ask_jarvis("alerta amarelo")
                 st.rerun()
             
             st.divider()
@@ -86,14 +86,14 @@ def main():
             if "assistant_reset" not in st.session_state:
                 st.session_state.assistant_reset = 0
             
-            q_key = f"jarvis_q_{st.session_state.assistant_reset}"
-            user_q = st.text_input("Ou digite sua dúvida:", key=q_key)
-            
-            if st.button("🚀 PERGUNTAR", use_container_width=True):
-                if user_q:
-                    st.session_state.last_query = user_q # Salva a pergunta
-                    res = assistant_manager.ask_jarvis(user_q)
-                    st.session_state.last_jarvis_res = res
+            # Form para permitir o ENTER
+            with st.form(key=f"jarvis_form_{st.session_state.assistant_reset}", clear_on_submit=True):
+                user_q = st.text_input("Digite sua dúvida e aperte ENTER:")
+                submit_button = st.form_submit_button("🚀 PERGUNTAR", use_container_width=True)
+                
+                if submit_button and user_q:
+                    st.session_state.last_query = user_q
+                    st.session_state.last_jarvis_res = assistant_manager.ask_jarvis(user_q)
                     st.session_state.assistant_reset += 1
                     st.rerun()
             
@@ -118,7 +118,6 @@ def main():
                     suggestion = st.text_area("Sua sugestão de resposta:", key="sug_text")
                     if st.button("Enviar Sugestão", use_container_width=True):
                         if suggestion:
-                            # Tenta extrair uma palavra-chave da última pergunta
                             repository.suggest_knowledge(st.session_state.get("last_query", "geral"), suggestion, user['Nome'])
                             st.success("Obrigado! Minha equipe vai analisar sua sugestão.")
                             time.sleep(2)
