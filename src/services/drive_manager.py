@@ -82,8 +82,11 @@ def upload_file(file_object, file_name, destination_folder_id):
         return {"id": uploaded_file.get("id"), "link": uploaded_file.get("webViewLink")}
     except Exception: return None
 
-def create_backup_snapshot():
-    """Realiza o backup do database.xlsx para o Drive."""
+def create_backup_snapshot(file_object=None):
+    """
+    Realiza o backup do database.xlsx para o Drive.
+    Aceita um file_object opcional para compatibilidade.
+    """
     service = _get_drive_service()
     if not service: return False
     try:
@@ -94,7 +97,11 @@ def create_backup_snapshot():
         backup_name = f"backup_projeto_ideal_{timestamp}.xlsx"
         
         from config import DATABASE_PATH
-        media = MediaFileUpload(DATABASE_PATH, mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+        # Se um objeto de arquivo for passado, usa ele. Caso contrário, lê do disco.
+        if file_object:
+            media = MediaIoBaseUpload(io.BytesIO(file_object.getvalue()), mimetype=file_object.type, resumable=True)
+        else:
+            media = MediaFileUpload(DATABASE_PATH, mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
         
         service.files().create(
             body={'name': backup_name, 'parents': [backups_folder_id]},
@@ -102,4 +109,6 @@ def create_backup_snapshot():
             fields='id'
         ).execute()
         return True
-    except Exception: return False
+    except Exception as e:
+        st.error(f"Erro no Backup: {e}")
+        return False
