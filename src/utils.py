@@ -44,11 +44,18 @@ def apply_page_config():
         </style>
     """, unsafe_allow_html=True)
 
-def loading_screen(text="INICIALIZANDO JARVIS..."):
+def loading_screen(text="INICIALIZANDO JARVIS...", duration=0.8):
     """Exibe uma tela de carregamento padronizada e estilizada."""
     import streamlit as st
-    st.markdown(f'<p class="loading-text">{text}</p>', unsafe_allow_html=True)
-    return st.spinner("")
+    import time
+    
+    placeholder = st.empty()
+    with placeholder.container():
+        st.markdown(f'<p class="loading-text">{text}</p>', unsafe_allow_html=True)
+        # O spinner nativo do streamlit
+        with st.spinner(""):
+            time.sleep(duration)
+    placeholder.empty()
 
 def hash_password(password):
     """Gera o hash de uma senha."""

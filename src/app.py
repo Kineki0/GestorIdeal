@@ -92,6 +92,28 @@ def main():
     # --- ASSISTENTE IDEAL (FLUTUANTE) ---
     floating_assistant.display_floating_assistant()
 
+    # --- LÓGICA DE TRANSIÇÃO COM CARREGAMENTO ---
+    import utils
+    utils.apply_page_config()
+
+    # Detecta mudança de página ou abertura de detalhes para mostrar loading
+    current_nav = f"{page}_{admin_page}_{st.session_state.get('show_fullscreen_details', False)}_{st.session_state.get('selected_lead_id', '')}"
+    
+    if 'last_nav' not in st.session_state:
+        st.session_state.last_nav = current_nav
+
+    if st.session_state.last_nav != current_nav:
+        # Se mudou algo na navegação, mostra a tela de carregamento
+        loading_msg = "SINCROZINANDO DADOS..."
+        if st.session_state.get('show_fullscreen_details'):
+            loading_msg = "ABRINDO DETALHES DO PROCESSO..."
+        elif page != st.session_state.last_nav.split('_')[0]:
+            loading_msg = f"CARREGANDO {page.upper()}..."
+            
+        utils.loading_screen(loading_msg)
+        st.session_state.last_nav = current_nav
+        # Não damos rerun aqui pois o streamlit já está no meio do ciclo de renderização
+
     # Roteamento de página
     if admin_page and admin_page != "Nenhum":
         if admin_page == "Gerenciar Kanban":
