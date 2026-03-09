@@ -25,14 +25,18 @@ def _get_credentials_file():
     if "GOOGLE_TOKEN" in st.secrets:
         try:
             import json
-            token_info = json.loads(st.secrets["GOOGLE_TOKEN"])
+            import re
+            token_raw = st.secrets["GOOGLE_TOKEN"]
+            # Limpa caracteres de controle e quebras de linha que quebram o JSON
+            token_clean = re.sub(r"[\n\r\t]", "", token_raw).strip()
+            token_info = json.loads(token_clean)
             creds = Credentials.from_authorized_user_info(token_info, SCOPES)
             if creds and creds.valid: return creds
             if creds and creds.expired and creds.refresh_token:
                 creds.refresh(Request())
                 return creds
         except Exception as e:
-            st.error(f"Erro ao carregar GOOGLE_TOKEN dos Secrets: {e}")
+            st.error(f"Erro ao processar GOOGLE_TOKEN (JSON): {e}")
 
     # 2. TENTA VIA ARQUIVO LOCAL (Ideal para Desktop)
     base_path = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
