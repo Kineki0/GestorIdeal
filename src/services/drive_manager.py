@@ -45,14 +45,18 @@ def check_drive_connection():
 
 def find_or_create_folder(folder_name, parent_folder_id):
     service = _get_drive_service()
-    if not service: return None
+    if not service:
+        st.error("Falha ao inicializar o serviço do Google Drive.")
+        return None
     try:
         query = f"name='{folder_name}' and mimeType='application/vnd.google-apps.folder' and '{parent_folder_id}' in parents and trashed=false"
         response = service.files().list(q=query, fields="files(id)").execute()
         files = response.get('files', [])
         if files: return files[0]['id']
         return service.files().create(body={'name': folder_name, 'mimeType': 'application/vnd.google-apps.folder', 'parents': [parent_folder_id]}, fields='id').execute()['id']
-    except Exception: return None
+    except Exception as e:
+        st.error(f"Erro ao buscar/criar pasta '{folder_name}': {e}")
+        return None
 
 def get_date_folder_structure(parent_folder_id):
     """
