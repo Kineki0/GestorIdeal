@@ -20,9 +20,21 @@ def get_current_url():
     return "https://gestorideal.streamlit.app"
 
 def _get_credentials_file():
-    """Tenta carregar as credenciais do token.json na raiz do projeto."""
-    # Caminho absoluto baseado na localização deste arquivo (src/services/drive_manager.py)
-    # Subir dois níveis para chegar na raiz do projeto (src -> raiz)
+    """Tenta carregar as credenciais do token.json na raiz do projeto ou via st.secrets."""
+    # 1. TENTA VIA STREAMLIT SECRETS (Ideal para Cloud)
+    if "GOOGLE_TOKEN" in st.secrets:
+        try:
+            import json
+            token_info = json.loads(st.secrets["GOOGLE_TOKEN"])
+            creds = Credentials.from_authorized_user_info(token_info, SCOPES)
+            if creds and creds.valid: return creds
+            if creds and creds.expired and creds.refresh_token:
+                creds.refresh(Request())
+                return creds
+        except Exception as e:
+            st.error(f"Erro ao carregar GOOGLE_TOKEN dos Secrets: {e}")
+
+    # 2. TENTA VIA ARQUIVO LOCAL (Ideal para Desktop)
     base_path = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     token_path = os.path.join(base_path, 'token.json')
     
@@ -37,14 +49,16 @@ def _get_credentials_file():
                     with open(token_path, 'w') as token: token.write(creds.to_json())
                     return creds
                 except Exception as e:
-                    st.error(f"Erro ao atualizar token: {e}")
+                    st.error(f"Erro ao atualizar token local: {e}")
             else:
                 if creds and not creds.valid:
-                    st.error("Token encontrado mas é inválido e não possui Refresh Token.")
+                    st.error("Token local encontrado mas é inválido e não possui Refresh Token.")
         except Exception as e: 
             st.error(f"Erro ao carregar {token_path}: {e}")
     else:
-        st.error(f"Arquivo token.json não encontrado em: {token_path}")
+        # Se não encontrou em nenhum lugar, avisa como configurar
+        st.warning("Google Drive: Token não encontrado. Se estiver no Cloud, configure o Secret 'GOOGLE_TOKEN'.")
+        
     return None
 
 def _get_drive_service(force_new_auth=False):
