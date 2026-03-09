@@ -18,17 +18,37 @@ def apply_page_config():
                 100% { opacity: 1; transform: translateY(0); }
             }
             
-            /* Melhoria visual do Spinner (opcional) */
+            /* Estilização do Spinner para parecer o reator do Jarvis */
             div.stSpinner > div {
                 border-top-color: #00d4ff !important;
+                border-width: 4px !important;
+                width: 60px !important;
+                height: 60px !important;
+                margin: auto;
+            }
+            
+            /* Texto de carregamento pulsante */
+            .loading-text {
+                text-align: center;
+                color: #00d4ff;
+                font-family: 'monospace';
+                font-weight: bold;
+                letter-spacing: 2px;
+                animation: pulse 1.5s infinite;
+            }
+            @keyframes pulse {
+                0% { opacity: 0.4; }
+                50% { opacity: 1; }
+                100% { opacity: 0.4; }
             }
         </style>
     """, unsafe_allow_html=True)
 
-def loading_screen(text="Preparando Jarvis..."):
-    """Exibe uma tela de carregamento padronizada."""
+def loading_screen(text="INICIALIZANDO JARVIS..."):
+    """Exibe uma tela de carregamento padronizada e estilizada."""
     import streamlit as st
-    return st.spinner(text)
+    st.markdown(f'<p class="loading-text">{text}</p>', unsafe_allow_html=True)
+    return st.spinner("")
 
 def hash_password(password):
     """Gera o hash de uma senha."""
