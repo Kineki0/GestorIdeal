@@ -20,16 +20,21 @@ def get_current_url():
     return "https://gestorideal.streamlit.app"
 
 def _get_credentials_file():
-    """Tenta carregar as credenciais do token.json local."""
-    if os.path.exists('token.json'):
+    """Tenta carregar as credenciais do token.json na raiz do projeto."""
+    # Caminho absoluto baseado na localização deste arquivo (src/services/drive_manager.py)
+    # Subir dois níveis para chegar na raiz do projeto (src -> raiz)
+    base_path = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    token_path = os.path.join(base_path, 'token.json')
+    
+    if os.path.exists(token_path):
         try:
-            creds = Credentials.from_authorized_user_file('token.json', SCOPES)
+            creds = Credentials.from_authorized_user_file(token_path, SCOPES)
             if creds and creds.valid: 
                 return creds
             if creds and creds.expired and creds.refresh_token:
                 try:
                     creds.refresh(Request())
-                    with open('token.json', 'w') as token: token.write(creds.to_json())
+                    with open(token_path, 'w') as token: token.write(creds.to_json())
                     return creds
                 except Exception as e:
                     st.error(f"Erro ao atualizar token: {e}")
@@ -37,10 +42,9 @@ def _get_credentials_file():
                 if creds and not creds.valid:
                     st.error("Token encontrado mas é inválido e não possui Refresh Token.")
         except Exception as e: 
-            st.error(f"Erro ao carregar token.json: {e}")
-            # if os.path.exists('token.json'): os.remove('token.json')
+            st.error(f"Erro ao carregar {token_path}: {e}")
     else:
-        st.error("Arquivo token.json não encontrado na raiz do projeto.")
+        st.error(f"Arquivo token.json não encontrado em: {token_path}")
     return None
 
 def _get_drive_service(force_new_auth=False):

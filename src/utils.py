@@ -4,6 +4,32 @@ from datetime import datetime, timedelta
 import pandas as pd
 from config import INDICADORES_STATUS, DIAS_ALERTA_PRAZO
 
+def apply_page_config():
+    """Aplica configurações visuais e animações de transição."""
+    import streamlit as st
+    st.markdown("""
+        <style>
+            /* Animação de Fade-in para o conteúdo principal */
+            .main .block-container {
+                animation: fadeIn 0.8s ease-in-out;
+            }
+            @keyframes fadeIn {
+                0% { opacity: 0; transform: translateY(20px); }
+                100% { opacity: 1; transform: translateY(0); }
+            }
+            
+            /* Melhoria visual do Spinner (opcional) */
+            div.stSpinner > div {
+                border-top-color: #00d4ff !important;
+            }
+        </style>
+    """, unsafe_allow_html=True)
+
+def loading_screen(text="Preparando Jarvis..."):
+    """Exibe uma tela de carregamento padronizada."""
+    import streamlit as st
+    return st.spinner(text)
+
 def hash_password(password):
     """Gera o hash de uma senha."""
     return bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt())
