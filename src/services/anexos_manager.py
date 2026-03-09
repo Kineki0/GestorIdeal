@@ -22,6 +22,9 @@ def attach_file(tipo_referencia, id_referencia, nome_referencia, uploaded_file, 
     try:
         # Pasta de Data (ex: 2026 / Março)
         date_folder_id = drive_manager.get_date_folder_structure(root_folder_id)
+        if not date_folder_id:
+            st.error("Não foi possível criar/encontrar a pasta de data no Google Drive.")
+            return False
         
         # Pasta de nível de Categoria (Clientes, Leads, etc.) dentro da data
         main_type_folder_id = drive_manager.find_or_create_folder(f"{tipo_referencia}s", date_folder_id)

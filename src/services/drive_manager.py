@@ -54,6 +54,26 @@ def find_or_create_folder(folder_name, parent_folder_id):
         return service.files().create(body={'name': folder_name, 'mimeType': 'application/vnd.google-apps.folder', 'parents': [parent_folder_id]}, fields='id').execute()['id']
     except Exception: return None
 
+def get_date_folder_structure(parent_folder_id):
+    """
+    Cria uma estrutura de pastas baseada na data atual: YYYY / MMMM
+    Ex: 2026 / Março
+    Retorna o ID da pasta do mês.
+    """
+    now = datetime.now()
+    year_str = str(now.year)
+    meses = [
+        "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
+        "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"
+    ]
+    month_str = meses[now.month - 1]
+    
+    year_folder_id = find_or_create_folder(year_str, parent_folder_id)
+    if not year_folder_id: return None
+    
+    month_folder_id = find_or_create_folder(month_str, year_folder_id)
+    return month_folder_id
+
 def setup_lead_folders(lead_name):
     """Cria a estrutura de pastas para um novo lead no Drive."""
     service = _get_drive_service()
@@ -81,6 +101,16 @@ def upload_file(file_object, file_name, destination_folder_id):
         uploaded_file = service.files().create(body={'name': file_name, 'parents': [destination_folder_id]}, media_body=media, fields='id, webViewLink').execute()
         return {"id": uploaded_file.get("id"), "link": uploaded_file.get("webViewLink")}
     except Exception: return None
+
+def update_file(file_id, file_object):
+    """Atualiza o conteúdo de um arquivo existente."""
+    service = _get_drive_service()
+    if not service: return False
+    try:
+        media = MediaIoBaseUpload(io.BytesIO(file_object.getvalue()), mimetype=file_object.type, resumable=True)
+        service.files().update(fileId=file_id, media_body=media).execute()
+        return True
+    except Exception: return False
 
 def create_backup_snapshot(file_object=None):
     """
