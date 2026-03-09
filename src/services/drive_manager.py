@@ -65,15 +65,18 @@ def _get_credentials_file():
         
     return None
 
+@st.cache_resource(ttl=3600)
 def _get_drive_service(force_new_auth=False):
-    """Gerencia a conexão Google."""
+    """Gerencia a conexão Google com cache de recurso."""
     creds = _get_credentials_file()
-    if creds: return build('drive', 'v3', credentials=creds)
+    if creds: 
+        return build('drive', 'v3', credentials=creds, cache_discovery=False)
     return None
 
 def check_drive_connection():
-    creds = _get_credentials_file()
-    return creds is not None and creds.valid
+    # Usamos o serviço cacheado para verificar a conexão
+    service = _get_drive_service()
+    return service is not None
 
 def find_or_create_folder(folder_name, parent_folder_id):
     service = _get_drive_service()

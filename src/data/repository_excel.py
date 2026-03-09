@@ -94,11 +94,23 @@ def _sync_worker():
 def _sync_to_drive_async():
     threading.Thread(target=_sync_worker).start()
 
-# --- Funções de Leitura e Escrita ---
+# --- Funções de Leitura e Escrita Otimizadas ---
+
+@st.cache_data(ttl=600) # Cache de 10 minutos para leitura do disco
+def _read_excel_file(path):
+    """Lê o arquivo Excel com cache do Streamlit."""
+    try:
+        with excel_lock:
+            return pd.read_excel(path, sheet_name=None)
+    except Exception:
+        return None
 
 def _load_database_from_file():
-    _sync_from_drive()
-    
+    # Sincroniza do drive apenas na inicialização fria
+    if 'db_last_sync' not in st.session_state:
+        _sync_from_drive()
+        st.session_state.db_last_sync = datetime.now()
+
     expected_lead_columns = [
         'ID_Lead', 'Razao_Social', 'Telefone', 'Nome_Contato', 'CNPJ', 'Email', 
         'Etapa_Atual', 'Status', 'Prioridade', 'Risco', 'Esforco', 'Nucleo',
@@ -123,22 +135,22 @@ def _load_database_from_file():
         _sync_to_drive_async()
         return dfs
 
-    try:
-        with excel_lock:
-            dfs = pd.read_excel(config.DATABASE_PATH, sheet_name=None)
-            
-            # Garantir existência de todas as abas
-            required_sheets = ['Usuarios', 'Leads', 'Historico', 'Anexos', 'Logs', 'PasswordResetTokens', 'KanbanConfig', 'Jarvis_Brain']
-            for sheet in required_sheets:
-                if sheet not in dfs:
-                    if sheet == 'Jarvis_Brain':
-                        dfs[sheet] = pd.DataFrame({'ID_Conhecimento': [], 'Palavra_Chave': [], 'Resposta': [], 'Status': [], 'Usuario_Sugeriu': [], 'Data_Criacao': []})
-                    elif sheet == 'Logs':
-                        dfs[sheet] = pd.DataFrame({'Timestamp': [], 'Nivel': [], 'Mensagem': []})
-                    else:
-                        dfs[sheet] = pd.DataFrame()
-            return dfs
-    except Exception: return None
+    # Tenta ler do cache de arquivo primeiro
+    dfs = _read_excel_file(config.DATABASE_PATH)
+    
+    if dfs:
+        # Garantir existência de todas as abas
+        required_sheets = ['Usuarios', 'Leads', 'Historico', 'Anexos', 'Logs', 'PasswordResetTokens', 'KanbanConfig', 'Jarvis_Brain']
+        for sheet in required_sheets:
+            if sheet not in dfs:
+                if sheet == 'Jarvis_Brain':
+                    dfs[sheet] = pd.DataFrame({'ID_Conhecimento': [], 'Palavra_Chave': [], 'Resposta': [], 'Status': [], 'Usuario_Sugeriu': [], 'Data_Criacao': []})
+                elif sheet == 'Logs':
+                    dfs[sheet] = pd.DataFrame({'Timestamp': [], 'Nivel': [], 'Mensagem': []})
+                else:
+                    dfs[sheet] = pd.DataFrame()
+        return dfs
+    return None
 
 def init_session_state():
     if 'db_dfs' not in st.session_state:
@@ -149,15 +161,23 @@ def get_session_dfs():
     return st.session_state.db_dfs
 
 def commit_to_file():
-    """Salva localmente e sincroniza com o Google Drive."""
+    """Salva localmente (instantâneo) e agenda sincronização em background."""
     dfs = get_session_dfs()
     try:
+        # 1. Salva no arquivo local IMEDIATAMENTE (rápido)
         with excel_lock:
             with pd.ExcelWriter(config.DATABASE_PATH, engine='openpyxl') as writer:
                 for name, df in dfs.items(): df.to_excel(writer, sheet_name=name, index=False)
+        
+        # 2. Limpa o cache de leitura para que a próxima leitura pegue o novo arquivo
+        st.cache_data.clear()
+        
+        # 3. Dispara a sincronização com o Drive em SEGUNDO PLANO (não trava o usuário)
         _sync_to_drive_async()
-        st.toast("💾 Dados Sincronizados!", icon="✅")
-    except Exception as e: st.error(f"Erro ao salvar: {e}")
+        
+        st.toast("💾 Alterações salvas!", icon="✅")
+    except Exception as e: 
+        st.error(f"Erro ao salvar: {e}")
 
 # --- Funções de Negócio ---
 

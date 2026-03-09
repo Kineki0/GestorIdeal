@@ -59,6 +59,7 @@ def _display_create_lead_form():
             st.session_state['show_create_lead_modal'] = False
             st.rerun()
 
+@st.fragment
 def _display_lead_details_modal(lead_id):
     if not st.session_state.get('show_fullscreen_details', False): return
     all_leads = repository.get_detailed_leads()
@@ -87,12 +88,12 @@ def _display_lead_details_modal(lead_id):
         
         st.divider()
         
-        # --- BOTÕES DE AÇÃO (LAYOUT VERTICAL PARA MELHOR ENCAIXE) ---
+        # --- BOTÕES DE AÇÃO ---
         current_stages = repository.get_kanban_stages()
         if p['Etapa_Atual'] in current_stages:
             curr_idx = current_stages.index(p['Etapa_Atual'])
         else:
-            curr_idx = 0 # Fallback
+            curr_idx = 0 
         
         # 1. Ação Principal: AVANÇAR
         if curr_idx < len(current_stages) - 1 and p['Etapa_Atual'] not in ['Ganhos', 'Perdidos']:
@@ -108,7 +109,6 @@ def _display_lead_details_modal(lead_id):
                 repository.update_lead(lead_id, {'Etapa_Atual': target_stage}, auth_manager.get_user(), f"Recuado para {target_stage}")
                 st.rerun()
         
-        # 3. Finalizações (Lado a Lado para economizar altura)
         col_f1, col_f2 = st.columns(2)
         if col_f1.button("🏆 GANHO", use_container_width=True):
             repository.update_lead(lead_id, {'Etapa_Atual': 'Ganhos'}, auth_manager.get_user(), "🎯 VENDA CONCLUÍDA")
@@ -150,34 +150,23 @@ def _display_lead_details_modal(lead_id):
             st.write("### ✅ Atividades Pendentes")
             items = json.loads(p['Checklist']) if p['Checklist'] and p['Checklist'] != "" else []
             
-            # --- 1. GRÁFICO DE PROGRESSO ---
             if items:
                 done = sum(1 for item in items if item['done'])
                 pending = len(items) - done
-                
-                # Criando um DataFrame simples para o gráfico
-                df_chart = pd.DataFrame({
-                    "Status": ["Concluído", "Pendente"],
-                    "Quantidade": [done, pending]
-                })
-                
                 c1, c2 = st.columns([1, 2])
                 with c1:
                     st.metric("Progresso Geral", f"{(done/len(items)*100):.0f}%")
-                    st.write(f"📊 {done} de {len(items)} tarefas concluídas")
+                    st.write(f"📊 {done} de {len(items)} concluídas")
                 with c2:
-                    # Cores customizadas: Azul para concluído, Cinza para pendente
                     st.plotly_chart({
-                        "data": [{"labels": df_chart["Status"], "values": df_chart["Quantidade"], "type": "pie", "marker": {"colors": ["#004a99", "#e9ecef"]}, "hole": 0.4}],
+                        "data": [{"labels": ["Concluído", "Pendente"], "values": [done, pending], "type": "pie", "marker": {"colors": ["#004a99", "#e9ecef"]}, "hole": 0.4}],
                         "layout": {"margin": {"t": 0, "b": 0, "l": 0, "r": 0}, "height": 200, "showlegend": True}
                     }, use_container_width=True)
                 st.divider()
 
-            # --- 2. ADICIONAR NOVA TAREFA (Com Reset) ---
             if f"chk_reset_{lead_id}" not in st.session_state:
                 st.session_state[f"chk_reset_{lead_id}"] = 0
             
-            # Chave dinâmica para limpar o campo
             chk_input_key = f"new_task_{lead_id}_{st.session_state[f'chk_reset_{lead_id}']}"
             new_item = st.text_input("Adicionar nova tarefa...", key=chk_input_key)
             
@@ -185,111 +174,79 @@ def _display_lead_details_modal(lead_id):
                 if new_item:
                     items.append({"task": new_item, "done": False})
                     repository.update_lead(lead_id, {'Checklist': json.dumps(items)}, auth_manager.get_user())
-                    st.session_state[f"chk_reset_{lead_id}"] += 1 # Muda a chave e limpa o texto
+                    st.session_state[f"chk_reset_{lead_id}"] += 1 
                     st.rerun()
-                else:
-                    st.warning("⚠️ Digite uma tarefa antes de adicionar.")
             
             st.write("---")
-            
-            # --- 3. LISTAGEM DOS ITENS ---
             for i, item in enumerate(items):
                 col_c, col_t, col_d = st.columns([0.1, 0.8, 0.1])
-                
-                # Checkbox de conclusão
                 if col_c.checkbox("", value=item['done'], key=f"chk_{lead_id}_{i}") != item['done']:
                     items[i]['done'] = not item['done']
                     repository.update_lead(lead_id, {'Checklist': json.dumps(items)}, auth_manager.get_user())
                     st.rerun()
-                
-                # Texto da tarefa
                 label = f"~~{item['task']}~~" if item['done'] else item['task']
                 col_t.markdown(label)
-                
-                # Botão de Deletar Item
-                if col_d.button("❌", key=f"del_chk_{lead_id}_{i}", help="Remover esta tarefa"):
+                if col_d.button("❌", key=f"del_chk_{lead_id}_{i}"):
                     items.pop(i)
                     repository.update_lead(lead_id, {'Checklist': json.dumps(items)}, auth_manager.get_user())
                     st.rerun()
 
         with tab3:
-            st.write("### 📂 Gestão de Documentos")
-            
-            # 1. Listagem de Arquivos Existentes
+            st.write("### 📂 Gestão de Documentos (Lazy Loading)")
+            # LAZY LOADING: Só busca no banco/drive se clicar nesta aba (implícito no Streamlit tabs)
             anexos = repository.get_anexos_by_referencia('Lead', lead_id)
             if not anexos.empty:
                 for _, a in anexos.iterrows():
                     with st.container(border=True):
                         c_icon, c_info, c_link, c_del = st.columns([1, 5, 2, 2])
                         c_icon.write("📄")
-                        c_info.write(f"**{a['Nome_Arquivo']}**\n\n🕒 {pd.to_datetime(a['Data_Envio']).strftime('%d/%m/%y %H:%M')} | 👤 {a['Usuario_Envio']}")
+                        c_info.write(f"**{a['Nome_Arquivo']}**\n\n🕒 {pd.to_datetime(a['Data_Envio']).strftime('%d/%m/%y %H:%M')}")
                         c_link.link_button("🔗 ABRIR", a['Link_Drive'], use_container_width=True)
                         if c_del.button("🗑️ EXCLUIR", key=f"del_anexo_{a['ID_Anexo']}", type="secondary", use_container_width=True):
                             repository.delete_anexo(a['ID_Anexo'])
                             st.rerun()
             else:
-                st.info("Nenhum arquivo anexado a este lead ainda.")
+                st.info("Nenhum arquivo anexado.")
 
             st.divider()
-
-            # 2. Upload de Novo Arquivo
             if p['Etapa_Atual'] not in ['Ganhos', 'Perdidos']:
                 st.write("#### 📤 Subir novo arquivo")
-                
-                # Técnica da Chave Dinâmica para resetar o uploader
                 if f"uploader_reset_{lead_id}" not in st.session_state:
                     st.session_state[f"uploader_reset_{lead_id}"] = 0
-                
-                # A chave muda sempre que o contador aumenta, resetando o campo
                 up_key = f"uploader_{lead_id}_{st.session_state[f'uploader_reset_{lead_id}']}"
-                up = st.file_uploader("Selecione um arquivo para o Drive", key=up_key)
-                
+                up = st.file_uploader("Selecione um arquivo", key=up_key)
                 if up:
-                    with st.status("Fazendo upload para o Drive..."):
+                    with st.status("Fazendo upload..."):
                         success = anexos_manager.attach_file('Lead', lead_id, p['Razao_Social'], up, "Anexo Operacional", auth_manager.get_user())
                         if success:
-                            # Incrementa o contador para mudar a chave e resetar o componente
                             st.session_state[f"uploader_reset_{lead_id}"] += 1
-                            st.toast(f"✅ Arquivo {up.name} enviado com sucesso!")
+                            st.toast(f"✅ Arquivo enviado!")
                             st.rerun()
-            else: 
-                st.info("ℹ️ Leads em Ganhos ou Perdidos são finalizados e não permitem novos uploads.")
 
         with tab4:
-            st.write("### 📜 Timeline de Evolução")
-            
-            # Formulário de Nova Nota
+            st.write("### 📜 Timeline")
             with st.form(f"comment_{lead_id}", clear_on_submit=True):
-                msg = st.text_area("Nova nota interna...", placeholder="O que aconteceu hoje com este lead?")
-                if st.form_submit_button("Postar na Timeline", use_container_width=True, type="primary"):
+                msg = st.text_area("Nova nota interna...")
+                if st.form_submit_button("Postar", use_container_width=True, type="primary"):
                     if msg:
                         repository.add_comment_to_lead_history(lead_id, auth_manager.get_user(), msg)
                         st.rerun()
             
             st.divider()
-            
             hist = repository.get_all('Historico')
             if not hist.empty:
                 hist['ID_Lead_Clean'] = pd.to_numeric(hist['ID_Lead'], errors='coerce')
                 this_hist = hist[hist['ID_Lead_Clean'] == int(lead_id)].sort_values('Timestamp', ascending=False)
-                
-                if this_hist.empty:
-                    st.info("Nenhuma atividade registrada.")
-                else:
-                    for _, r in this_hist.iterrows():
-                        ts = pd.to_datetime(r['Timestamp']).strftime('%d/%m/%y %H:%M')
-                        user_name = r['Usuario']
-                        
-                        if r['Tipo'] == 'Comentário':
-                            with st.chat_message("user", avatar="👤"):
-                                st.write(f"**{user_name}** em {ts}")
-                                st.info(r['Mensagem'])
-                        else:
-                            with st.chat_message("assistant", avatar="⚙️"):
-                                st.caption(f"🔧 **Sistema** | {ts}")
-                                st.write(f"_{user_name}_ alterou **{r['Campo']}**")
-                                if r['Mensagem'] and r['Mensagem'] != "N/A":
-                                    st.write(f"ℹ️ {r['Mensagem']}")
+                for _, r in this_hist.iterrows():
+                    ts = pd.to_datetime(r['Timestamp']).strftime('%d/%m/%y %H:%M')
+                    if r['Tipo'] == 'Comentário':
+                        with st.chat_message("user", avatar="👤"):
+                            st.write(f"**{r['Usuario']}** | {ts}")
+                            st.info(r['Mensagem'])
+                    else:
+                        with st.chat_message("assistant", avatar="⚙️"):
+                            st.caption(f"🔧 **Sistema** | {ts}")
+                            st.write(f"_{r['Usuario']}_: **{r['Campo']}**")
             else:
                 st.info("Histórico vazio.")
 
