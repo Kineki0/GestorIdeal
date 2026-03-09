@@ -24,13 +24,23 @@ def _get_credentials_file():
     if os.path.exists('token.json'):
         try:
             creds = Credentials.from_authorized_user_file('token.json', SCOPES)
-            if creds and creds.valid: return creds
-            if creds and creds.expired and creds.refresh_token:
-                creds.refresh(Request())
-                with open('token.json', 'w') as token: token.write(creds.to_json())
+            if creds and creds.valid: 
                 return creds
-        except Exception: 
-            if os.path.exists('token.json'): os.remove('token.json')
+            if creds and creds.expired and creds.refresh_token:
+                try:
+                    creds.refresh(Request())
+                    with open('token.json', 'w') as token: token.write(creds.to_json())
+                    return creds
+                except Exception as e:
+                    st.error(f"Erro ao atualizar token: {e}")
+            else:
+                if creds and not creds.valid:
+                    st.error("Token encontrado mas é inválido e não possui Refresh Token.")
+        except Exception as e: 
+            st.error(f"Erro ao carregar token.json: {e}")
+            # if os.path.exists('token.json'): os.remove('token.json')
+    else:
+        st.error("Arquivo token.json não encontrado na raiz do projeto.")
     return None
 
 def _get_drive_service(force_new_auth=False):
