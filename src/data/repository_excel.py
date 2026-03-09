@@ -169,11 +169,12 @@ def commit_to_file():
             with pd.ExcelWriter(config.DATABASE_PATH, engine='openpyxl') as writer:
                 for name, df in dfs.items(): df.to_excel(writer, sheet_name=name, index=False)
         
-        # 2. Limpa o cache de leitura para que a próxima leitura pegue o novo arquivo
-        st.cache_data.clear()
-        
-        # 3. Dispara a sincronização com o Drive em SEGUNDO PLANO (não trava o usuário)
+        # 2. Dispara a sincronização com o Drive em SEGUNDO PLANO (não trava o usuário)
         _sync_to_drive_async()
+        
+        # 3. Limpa o cache de leitura APÓS agendar o sync
+        # Isso garante que a próxima leitura de QUALQUER thread recarregue os novos dados.
+        st.cache_data.clear()
         
         st.toast("💾 Alterações salvas!", icon="✅")
     except Exception as e: 

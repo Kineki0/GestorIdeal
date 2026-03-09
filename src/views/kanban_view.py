@@ -54,10 +54,10 @@ def _display_create_lead_form():
                     }, auth_manager.get_user())
                     st.session_state['show_create_lead_modal'] = False
                     st.toast("✅ Lead cadastrado com sucesso!", icon="🚀")
-                    st.rerun()
+                    st.rerun(scope="fragment")
         if st.button("CANCELAR CADASTRO", use_container_width=True):
             st.session_state['show_create_lead_modal'] = False
-            st.rerun()
+            st.rerun(scope="fragment")
 
 @st.fragment
 def _display_lead_details_modal(lead_id):
@@ -74,7 +74,7 @@ def _display_lead_details_modal(lead_id):
         h1.subheader(f"📄 Gestão: {p['Razao_Social']} (#{p['ID_Lead']})")
         if h2.button("✖️", key=f"close_{lead_id}", use_container_width=True):
             st.session_state['show_fullscreen_details'] = False
-            st.rerun()
+            st.rerun(scope="fragment")
 
         # --- ÁREA ADMINISTRATIVA ---
         user_profile = auth_manager.get_user().get('Perfil', 'Usuário')
@@ -84,7 +84,7 @@ def _display_lead_details_modal(lead_id):
                     repository.delete_lead(lead_id)
                     st.session_state['show_fullscreen_details'] = False
                     st.toast("🚨 Lead excluído.", icon="🗑️")
-                    st.rerun()
+                    st.rerun(scope="fragment")
         
         st.divider()
         
@@ -100,22 +100,22 @@ def _display_lead_details_modal(lead_id):
             target_stage = current_stages[curr_idx+1]
             if st.button(f"➡️ AVANÇAR PARA: {target_stage}", use_container_width=True, type="primary"):
                 repository.update_lead(lead_id, {'Etapa_Atual': target_stage}, auth_manager.get_user(), f"Avançado para {target_stage}")
-                st.rerun()
+                st.rerun(scope="fragment")
         
         # 2. Ação Secundária: RECUAR
         if curr_idx > 0 and p['Etapa_Atual'] not in ['Ganhos', 'Perdidos']:
             target_stage = current_stages[curr_idx-1]
             if st.button(f"⬅️ RECUAR PARA: {target_stage}", use_container_width=True):
                 repository.update_lead(lead_id, {'Etapa_Atual': target_stage}, auth_manager.get_user(), f"Recuado para {target_stage}")
-                st.rerun()
+                st.rerun(scope="fragment")
         
         col_f1, col_f2 = st.columns(2)
         if col_f1.button("🏆 GANHO", use_container_width=True):
             repository.update_lead(lead_id, {'Etapa_Atual': 'Ganhos'}, auth_manager.get_user(), "🎯 VENDA CONCLUÍDA")
-            st.rerun()
+            st.rerun(scope="fragment")
         if col_f2.button("📉 PERDIDO", use_container_width=True):
             repository.update_lead(lead_id, {'Etapa_Atual': 'Perdidos'}, auth_manager.get_user(), "❌ PROCESSO ENCERRADO")
-            st.rerun()
+            st.rerun(scope="fragment")
 
         st.divider()
 
@@ -144,7 +144,7 @@ def _display_lead_details_modal(lead_id):
                     'Esforco': new_esforco, 'Prazo': new_prazo, 'Descricao': new_desc
                 }, auth_manager.get_user())
                 st.session_state['show_fullscreen_details'] = False
-                st.rerun()
+                st.rerun(scope="fragment")
 
         with tab2:
             st.write("### ✅ Atividades Pendentes")
@@ -175,7 +175,7 @@ def _display_lead_details_modal(lead_id):
                     items.append({"task": new_item, "done": False})
                     repository.update_lead(lead_id, {'Checklist': json.dumps(items)}, auth_manager.get_user())
                     st.session_state[f"chk_reset_{lead_id}"] += 1 
-                    st.rerun()
+                    st.rerun(scope="fragment")
             
             st.write("---")
             for i, item in enumerate(items):
@@ -183,13 +183,13 @@ def _display_lead_details_modal(lead_id):
                 if col_c.checkbox("", value=item['done'], key=f"chk_{lead_id}_{i}") != item['done']:
                     items[i]['done'] = not item['done']
                     repository.update_lead(lead_id, {'Checklist': json.dumps(items)}, auth_manager.get_user())
-                    st.rerun()
+                    st.rerun(scope="fragment")
                 label = f"~~{item['task']}~~" if item['done'] else item['task']
                 col_t.markdown(label)
                 if col_d.button("❌", key=f"del_chk_{lead_id}_{i}"):
                     items.pop(i)
                     repository.update_lead(lead_id, {'Checklist': json.dumps(items)}, auth_manager.get_user())
-                    st.rerun()
+                    st.rerun(scope="fragment")
 
         with tab3:
             st.write("### 📂 Gestão de Documentos (Lazy Loading)")
@@ -204,7 +204,7 @@ def _display_lead_details_modal(lead_id):
                         c_link.link_button("🔗 ABRIR", a['Link_Drive'], use_container_width=True)
                         if c_del.button("🗑️ EXCLUIR", key=f"del_anexo_{a['ID_Anexo']}", type="secondary", use_container_width=True):
                             repository.delete_anexo(a['ID_Anexo'])
-                            st.rerun()
+                            st.rerun(scope="fragment")
             else:
                 st.info("Nenhum arquivo anexado.")
 
@@ -221,7 +221,7 @@ def _display_lead_details_modal(lead_id):
                         if success:
                             st.session_state[f"uploader_reset_{lead_id}"] += 1
                             st.toast(f"✅ Arquivo enviado!")
-                            st.rerun()
+                            st.rerun(scope="fragment")
 
         with tab4:
             st.write("### 📜 Timeline")
@@ -230,7 +230,7 @@ def _display_lead_details_modal(lead_id):
                 if st.form_submit_button("Postar", use_container_width=True, type="primary"):
                     if msg:
                         repository.add_comment_to_lead_history(lead_id, auth_manager.get_user(), msg)
-                        st.rerun()
+                        st.rerun(scope="fragment")
             
             st.divider()
             hist = repository.get_all('Historico')
@@ -345,7 +345,7 @@ def display():
         sort_order = st.selectbox("Ordenar por:", ["Mais Recentes", "Mais Antigos"])
         if st.button("＋ NOVO LEAD", use_container_width=True, type="primary"):
             st.session_state['show_create_lead_modal'] = True
-            st.rerun()
+            st.rerun(scope="fragment")
 
     if st.session_state.get('show_create_lead_modal'): _display_create_lead_form()
     if st.session_state.get('show_fullscreen_details'): _display_lead_details_modal(st.session_state['selected_lead_id'])
@@ -404,7 +404,7 @@ def display():
                     if st.button(label_text, key=f"card_btn_{p['ID_Lead']}", use_container_width=True):
                         st.session_state['selected_lead_id'] = p['ID_Lead']
                         st.session_state['show_fullscreen_details'] = True
-                        st.rerun()
+                        st.rerun(scope="fragment")
                     
                     # Ações rápidas do Card
                     with st.popover("💬 Nota Rápida", use_container_width=True):
@@ -412,4 +412,4 @@ def display():
                         if st.button("Salvar Nota", key=f"btn_save_{p['ID_Lead']}", type="primary"):
                             if quick_note:
                                 repository.add_comment_to_lead_history(p['ID_Lead'], auth_manager.get_user(), quick_note)
-                                st.rerun()
+                                st.rerun(scope="fragment")
